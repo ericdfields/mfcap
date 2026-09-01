@@ -1,0 +1,110 @@
+# Freak Librarian — XcodeGen project (repo-root ios/ project).
+#
+# App identity per the mission + UX spec §20.5: bundle id
+# com.ericbrookfield.freaklibrarian, display name "Freak Librarian",
+# iPad-only, iPadOS 17.0+, Swift 6 strict concurrency complete.
+# Regenerate with: /opt/homebrew/bin/xcodegen generate   (run in ios/)
+#
+# Signing is handled OUTSIDE the generated project: automatic signing is
+# disabled (CODE_SIGN_STYLE=Manual, no team), and CI/simulator builds pass
+# CODE_SIGNING_ALLOWED=NO.
+name: FreakLibrarian
+options:
+  bundleIdPrefix: com.ericbrookfield
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGN_IDENTITY: ""
+    CODE_SIGNING_REQUIRED: NO
+    DEVELOPMENT_TEAM: ""
+packages:
+  FreakCore:
+    path: FreakCore
+targets:
+  FreakLibrarian:
+    type: application
+    platform: iOS
+    sources:
+      - path: App/Sources
+        excludes:
+          - Info.plist
+    dependencies:
+      - package: FreakCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.ericbrookfield.freaklibrarian
+        PRODUCT_NAME: FreakLibrarian
+        PRODUCT_MODULE_NAME: FreakLibrarian
+        TARGETED_DEVICE_FAMILY: "2"        # iPad only
+        SUPPORTS_MACCATALYST: NO
+        CURRENT_PROJECT_VERSION: 1
+        MARKETING_VERSION: 0.1.0
+        INFOPLIST_FILE: App/Sources/Info.plist
+    info:
+      path: App/Sources/Info.plist
+      properties:
+        CFBundleDisplayName: Freak Librarian
+        # Version comes from build settings (MARKETING_VERSION 0.1.0) —
+        # never hardcoded here, so project.yml is the single source.
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+        # Libraries and backups are plain phase-0 folders in Documents/,
+        # portable to the Mac/Python tooling via the Files app (§14.7).
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: true
+        ITSAppUsesNonExemptEncryption: false
+        # MIDI usage strings: Bluetooth MIDI controllers/adapters and
+        # RTP-MIDI (Network MIDI) session discovery.
+        NSBluetoothAlwaysUsageDescription: >-
+          Freak Librarian uses Bluetooth to connect to Bluetooth MIDI
+          adapters and controllers so it can talk to your MicroFreak.
+        NSBluetoothPeripheralUsageDescription: >-
+          Freak Librarian uses Bluetooth to connect to Bluetooth MIDI
+          adapters and controllers so it can talk to your MicroFreak.
+        NSLocalNetworkUsageDescription: >-
+          Freak Librarian uses the local network to discover Network MIDI
+          (RTP-MIDI) sessions that can reach your MicroFreak.
+        NSBonjourServices:
+          - _apple-midi._udp
+        UTExportedTypeDeclarations:
+          - UTTypeIdentifier: com.ericbrookfield.mfpreset
+            UTTypeDescription: MicroFreak Preset
+            UTTypeConformsTo: [public.json]
+            UTTypeTagSpecification:
+              public.filename-extension: [mfpreset]
+          # In-app drag payload (a reference, not preset content) — distinct
+          # from .mfpreset so drags leaving the app always export the real
+          # preset file, never reference JSON.
+          - UTTypeIdentifier: com.ericbrookfield.freaklibrarian.presetref
+            UTTypeDescription: Freak Librarian Preset Reference
+            UTTypeConformsTo: [public.data]
+  FreakLibrarianTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: App/Tests
+    dependencies:
+      - target: FreakLibrarian
+schemes:
+  FreakLibrarian:
+    build:
+      targets:
+        FreakLibrarian: all
+        FreakLibrarianTests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets: [FreakLibrarianTests]

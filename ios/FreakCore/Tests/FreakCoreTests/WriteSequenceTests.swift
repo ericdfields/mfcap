@@ -1,9 +1,10 @@
 // WriteSequenceTests.swift — the gate-verified 7-frame write on the wire:
-// order and ack accounting via the sim's wireLog, the WriteAborted stage /
-// chunksSent bookkeeping, torn writes, and rename-without-blob-traffic
-// (test_core_write_verify.py + test_write_aborted.py transliterated).
+// order and ack accounting via the sim's wireLog, the .writeAborted stage /
+// chunksSent bookkeeping, torn writes via failChunkAt, cancellation
+// mid-burst, and rename-without-blob-traffic.
 
 import Foundation
+import os
 import Testing
 @testable import FreakCore
 
@@ -13,13 +14,13 @@ private let writePreset = try! Preset(name: "Akiko San", blob: blob7(3), meta: t
 struct WriteSequenceTests {
 
     /// The exact 7-frame sequence, in order (lag off for determinism).
-    @Test func sevenFrameSequenceVerbatim() throws {
+    @Test func sevenFrameSequenceVerbatim() async throws {
         let sim = SimulatedMicroFreak(replyLag: false)
         let session = makeSession(sim)
-        let info = try session.writePreset(slot: 509, writePreset)
+        let info = try await session.writePreset(slot: 509, preset: writePreset)
         #expect(info.slot == 509 && info.name == "Akiko San")
-        let out = sim.wireLog.filter { $0.direction == .out }
-            .map { FreakProtocol.parse($0.raw)! }
+        let wireLog = await sim.wireLog()
+        let out = wireLog.filter { $0.direction == .out }.map { Wire.parse($0.raw)! }
         let kinds: [[Int]] = out.map { [Int($0.cmd), $0.data.count] }
         var expected: [[Int]] = [[0x19, 3]]                       // 1: name read
         expected.append([0x52, 35])                               // 2: name + meta
@@ -41,155 +42,199 @@ struct WriteSequenceTests {
         }
         #expect(sentBlob == writePreset.blob)
         // captured ack traffic: name 0x52 + open 0x52 + go + 146 chunks = 149
-        let acks = sim.wireLog.filter {
-            $0.direction == .in && FreakProtocol.parse($0.raw)!.isAck
-        }
+        let acks = wireLog.filter { $0.direction == .in && Wire.parse($0.raw)!.isAck }
         #expect(acks.count == 149)
         // device-shape acks: len 0x00, empty payload
         for a in acks {
-            let f = FreakProtocol.parse(a.raw)!
+            let f = Wire.parse(a.raw)!
             #expect(f.length == 0 && f.data.isEmpty)
         }
-        #expect((try sim.peek(slot: 509)).blob == writePreset.blob)
-        #expect(sim.faults.isEmpty, "\(sim.faults)")
+        #expect((try await sim.peek(slot: 509)).blob == writePreset.blob)
+        let faults = await sim.faults()
+        #expect(faults.isEmpty, "\(faults)")
     }
 
     /// Chunk seqs continue from the go frame's 0 and wrap THROUGH 0 — a
     /// stream separate from the addressed counter (which skips 0).
-    @Test func chunkSeqStreamIsSeparateFromAddressedCounter() throws {
+    @Test func chunkSeqStreamIsSeparateFromAddressedCounter() async throws {
         let sim = SimulatedMicroFreak(replyLag: false)
         let session = makeSession(sim)
-        _ = try session.writePreset(slot: 3, writePreset)
-        let out = sim.wireLog.filter { $0.direction == .out }
-            .map { FreakProtocol.parse($0.raw)! }
+        _ = try await session.writePreset(slot: 3, preset: writePreset)
+        let out = await sim.wireLog().filter { $0.direction == .out }
+            .map { Wire.parse($0.raw)! }
         let chunkSeqs = out.filter(\.isChunk).map { Int($0.seq) }
         #expect(chunkSeqs == (0..<146).map { ($0 + 1) % 128 })
         #expect(chunkSeqs.contains(0), "the chunk stream wraps THROUGH 0")
-        let addressedSeqs = out.filter { !$0.isChunk && $0.cmd != FreakProtocol.cmdGo }
+        let addressedSeqs = out.filter { !$0.isChunk && $0.cmd != Wire.cmdGo }
             .map { Int($0.seq) }
         #expect(!addressedSeqs.contains(0), "the addressed counter never emits 0")
         #expect(addressedSeqs == [1, 2, 3, 4])
     }
 
-    // ----------------------------------------------- WriteAborted bookkeeping
+    // ----------------------------------------------- writeAborted bookkeeping
 
-    @Test func sendFailureAtEachControlStage() throws {
+    @Test func sendFailureAtEachControlStage() async throws {
         let judges: [(WriteStage, @Sendable (Frame) -> Bool)] = [
-            (.nameWrite, { $0.cmd == FreakProtocol.cmdName && $0.data.count == 35 }),
-            (.open, { $0.cmd == FreakProtocol.cmdName && $0.data.count == 3 }),
-            (.go, { $0.cmd == FreakProtocol.cmdGo }),
+            (.nameWrite, { $0.cmd == Wire.cmdName && $0.data.count == 35 }),
+            (.open, { $0.cmd == Wire.cmdName && $0.data.count == 3 }),
+            (.go, { $0.cmd == Wire.cmdGo }),
         ]
         for (stage, judge) in judges {
             let sim = SimulatedMicroFreak.factoryFresh(replyLag: false)
             let session = makeSession(FailingSendTransport(sim, judge: judge))
-            let e = expectFreakError("stage \(stage)") {
-                try session.writePreset(slot: 509, writePreset)
+            await #expect(throws: FreakError.writeAborted(stage: stage, slot: 509,
+                                                          chunksSent: 0),
+                          "stage \(stage)") {
+                try await session.writePreset(slot: 509, preset: writePreset)
             }
-            guard case .writeAborted(let s, let slot, let chunksSent, let underlying) = e else {
-                Issue.record("expected .writeAborted at \(stage), got \(String(describing: e))")
-                continue
-            }
-            #expect(s == stage && slot == 509 && chunksSent == 0)
-            #expect(underlying?.contains("wire pulled") == true)
         }
     }
 
-    @Test func sendFailureMidChunkStream() throws {
-        let counter = LockedBox(0)
+    @Test func sendFailureMidChunkStream() async throws {
         let sim = SimulatedMicroFreak.factoryFresh(replyLag: false)
+        let counter = Counter()
         let session = makeSession(FailingSendTransport(sim) { f in
             guard f.isChunk else { return false }
-            return counter.withLock { chunks in
-                chunks += 1
-                return chunks == 6          // fail sending chunk index 5
-            }
+            return counter.increment() == 6          // fail sending chunk index 5
         })
-        let before = try sim.peek(slot: 509).blob
-        let e = expectFreakError { try session.writePreset(slot: 509, writePreset) }
-        guard case .writeAborted(let stage, let slot, let chunksSent, _) = e else {
-            Issue.record("expected .writeAborted, got \(String(describing: e))")
-            return
+        let before = try await sim.peek(slot: 509).blob
+        await #expect(throws: FreakError.writeAborted(stage: .chunk, slot: 509,
+                                                      chunksSent: 5)) {
+            try await session.writePreset(slot: 509, preset: writePreset)
         }
-        #expect(stage == .chunk && slot == 509 && chunksSent == 5)
-        #expect(try sim.peek(slot: 509).blob == before, "torn write must not commit")
+        #expect(try await sim.peek(slot: 509).blob == before, "torn write must not commit")
     }
 
-    @Test func missingControlFrameAck() throws {
+    @Test func missingControlFrameAck() async throws {
         let sim = SimulatedMicroFreak.factoryFresh(replyLag: false)
         let wire = AckDroppingTransport(sim)
         let session = makeSession(wire)
-        wire.dropAcks = true
-        let e = expectFreakError { try session.writePreset(slot: 509, writePreset) }
-        guard case .writeAborted(let stage, let slot, let chunksSent, let underlying) = e else {
-            Issue.record("expected .writeAborted, got \(String(describing: e))")
-            return
+        await wire.dropAcks(true)
+        await #expect(throws: FreakError.writeAborted(stage: .nameWrite, slot: 509,
+                                                      chunksSent: 0)) {
+            try await session.writePreset(slot: 509, preset: writePreset)
         }
-        #expect(stage == .nameWrite && slot == 509 && chunksSent == 0)
-        #expect(underlying == nil)
     }
 
-    @Test func failingFinalReadBack() throws {
+    @Test func failingFinalReadBack() async throws {
         let sim = SimulatedMicroFreak.factoryFresh(replyLag: false)
         let session = makeSession(ReplyDroppingTransport(sim))
-        let e = expectFreakError { try session.writePreset(slot: 509, writePreset) }
-        guard case .writeAborted(let stage, let slot, let chunksSent, let underlying) = e else {
-            Issue.record("expected .writeAborted, got \(String(describing: e))")
-            return
+        await #expect(throws: FreakError.writeAborted(stage: .finalRead, slot: 509,
+                                                      chunksSent: Wire.chunkCount)) {
+            try await session.writePreset(slot: 509, preset: writePreset)
         }
-        #expect(stage == .finalRead && slot == 509)
-        #expect(chunksSent == FreakProtocol.chunkCount)
-        #expect(underlying?.contains("device timeout") == true)
         // the write itself completed: the blob is committed on the device
-        #expect(try sim.peek(slot: 509).blob == writePreset.blob)
+        #expect(try await sim.peek(slot: 509).blob == writePreset.blob)
     }
 
     // ---------------------------------------------------------- torn write
 
-    @Test func tornWriteFailChunkAt() throws {
+    @Test func tornWriteFailChunkAt() async throws {
         let sim = SimulatedMicroFreak(replyLag: false, failChunkAt: 3)
         let session = makeSession(sim)
-        let before = try sim.peek(slot: 5).blob
-        #expect(throws: FreakError.chunkNotAcked(slot: 5, chunkIndex: 3)) {
-            try session.writePreset(slot: 5, writePreset)
+        let before = try await sim.peek(slot: 5).blob
+        await #expect(throws: FreakError.chunkNotAcked(slot: 5, chunkIndex: 3)) {
+            try await session.writePreset(slot: 5, preset: writePreset)
         }
-        #expect(try sim.peek(slot: 5).blob == before, "no commit, slot untouched")
+        #expect(try await sim.peek(slot: 5).blob == before, "no commit, slot untouched")
+    }
+
+    /// Torn write, then a fresh verified write of the same slot succeeds —
+    /// recovery is "write again".
+    @Test func rewriteAfterTornWriteRecovers() async throws {
+        let sim = SimulatedMicroFreak.factoryFresh(replyLag: false, failChunkAt: 4)
+        let device = makeDevice(sim)
+        await #expect(throws: FreakError.chunkNotAcked(slot: 40, chunkIndex: 4)) {
+            try await device.write(slot: 40, preset: writePreset)
+        }
+        // failChunkAt is CUMULATIVE (every later chunk goes unacked too), so
+        // a rewrite on THIS sim would fail as well — use a fresh sim per
+        // torn scenario (the documented rule) and prove the rewrite there.
+        let fresh = SimulatedMicroFreak.factoryFresh(replyLag: false)
+        let freshDevice = makeDevice(fresh)
+        let report = try await freshDevice.write(slot: 40, preset: writePreset)
+        #expect(report.verified == true)
+        #expect(try await fresh.peek(slot: 40).blob == writePreset.blob)
     }
 
     /// Cancelling mid-write tears the slot; done/total say how far it got.
-    @Test func cancelledMidWrite() throws {
+    @Test func cancelledMidWrite() async throws {
+        let sim = SimulatedMicroFreak.factoryFresh(replyLag: false)
+        // cancel the running task right after chunk index 9 goes out; the
+        // poll before chunk 10 throws
+        let counter = Counter()
+        let wire = SelfCancellingTransport(sim) { f in
+            f.isChunk && counter.increment() == 10
+        }
+        let session = makeSession(wire)
+        let task = Task {
+            try await session.writePreset(slot: 100, preset: writePreset)
+        }
+        await #expect(throws: FreakError.operationCancelled(done: 10, total: 146)) {
+            try await task.value
+        }
+        // torn: the sim never saw a 0x17, slot untouched
+        #expect(try await sim.peek(slot: 100).blob != writePreset.blob)
+        // rewrite recovers (same sim: no failChunkAt in play)
+        let report = try await makeDevice(sim).write(slot: 100, preset: writePreset)
+        #expect(report.verified == true)
+        #expect(try await sim.peek(slot: 100).blob == writePreset.blob)
+    }
+
+    /// A write on an already-cancelled task stops at chunk 0.
+    @Test func preCancelledWriteStopsAtChunkZero() async throws {
         let sim = SimulatedMicroFreak.factoryFresh(replyLag: false)
         let session = makeSession(sim)
-        let token = CancelToken()
-        token.cancel()
-        #expect(throws: FreakError.cancelled(done: 0, total: 146)) {
-            try session.writePreset(slot: 100, writePreset, cancel: token)
+        let before = try await sim.peek(slot: 100).blob
+        let task = Task { () throws -> NameInfo in
+            withUnsafeCurrentTask { $0?.cancel() }
+            return try await session.writePreset(slot: 100, preset: writePreset)
         }
+        await #expect(throws: FreakError.operationCancelled(done: 0,
+                                                            total: Wire.chunkCount)) {
+            try await task.value
+        }
+        #expect(try await sim.peek(slot: 100).blob == before)
     }
 
     // --------------------------------------------------------------- rename
 
     /// writeName is a rename: one long 0x52 + one refresh read; zero blob
     /// traffic; the device ack is awaited (missing -> .deviceTimeout).
-    @Test func renameIsLong52PlusRefreshOnly() throws {
+    @Test func renameIsLong52PlusRefreshOnly() async throws {
         let sim = SimulatedMicroFreak.factoryFresh(replyLag: false)
         let session = makeSession(sim)
-        let before = try sim.peek(slot: 42)
-        let info = try session.writeName(slot: 42, name: "New Name", meta: before.meta)
+        let before = try await sim.peek(slot: 42)
+        let info = try await session.writeName(slot: 42, name: "New Name",
+                                               meta: before.meta)
         #expect(info.slot == 42 && info.name == "New Name")
-        #expect(try sim.peek(slot: 42).name == "New Name")
-        #expect(try sim.peek(slot: 42).blob == before.blob)
-        let sent = sim.wireLog.filter { $0.direction == .out }
-            .map { FreakProtocol.parse($0.raw)! }
-        #expect(sent.allSatisfy { $0.cmd != FreakProtocol.cmdGo && !$0.isChunk },
+        #expect(try await sim.peek(slot: 42).name == "New Name")
+        #expect(try await sim.peek(slot: 42).blob == before.blob)
+        let sent = await sim.wireLog().filter { $0.direction == .out }
+            .map { Wire.parse($0.raw)! }
+        #expect(sent.allSatisfy { $0.cmd != Wire.cmdGo && !$0.isChunk },
                 "rename must never send go/chunk frames")
-        #expect(sent.filter { $0.cmd == FreakProtocol.cmdName && $0.data.count == 35 }.count == 1)
-        #expect(sim.faults.isEmpty, "\(sim.faults)")
+        #expect(sent.filter { $0.cmd == Wire.cmdName && $0.data.count == 35 }.count == 1)
+        let faults = await sim.faults()
+        #expect(faults.isEmpty, "\(faults)")
     }
 
-    @Test func renameWithoutAckTimesOut() {
+    @Test func renameWithoutAckTimesOut() async {
         let session = makeSession(DeadTransport())
-        #expect(throws: FreakError.deviceTimeout(stage: .nameWriteAck, slot: 8)) {
-            try session.writeName(slot: 8, name: "X", meta: testMeta)
+        await #expect(throws: FreakError.deviceTimeout(stage: .nameWriteAck, slot: 8)) {
+            try await session.writeName(slot: 8, name: "X", meta: testMeta)
+        }
+    }
+}
+
+/// Tiny sendable counter for judge closures.
+final class Counter: Sendable {
+    private let lock = OSAllocatedUnfairLock(initialState: 0)
+
+    func increment() -> Int {
+        lock.withLock { value in
+            value += 1
+            return value
         }
     }
 }

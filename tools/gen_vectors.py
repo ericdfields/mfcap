@@ -165,9 +165,10 @@ def gen_frames() -> int:
                       "pos": pos, "seq": seq,
                       "frame": hx(p.open_write_frame(seq, slot))})
 
-    def name_write_case(slot: int, seq: int, name: str, note: str = "") -> dict:
+    def name_write_case(slot: int, seq: int, name: str, note: str = "",
+                        meta: bytes | None = None) -> dict:
         bank, pos = p.addr(slot)
-        meta = crafted_meta(slot)
+        meta = crafted_meta(slot) if meta is None else meta
         raw = p.name_write_frame(seq, slot, name, meta)
         f = p.parse(raw)
         # generator-side invariants, straight from docs/write-protocol.md
@@ -190,6 +191,56 @@ def gen_frames() -> int:
     cases.append(name_write_case(
         511, 101, "ABCDEFGHIJKLMNOPQRSTUVW",
         note="maximum-length 23-char name; zero padding bytes"))
+    cases.append(name_write_case(
+        384, 102, "A", note="1-char name at the payload[9] reply boundary; "
+                            "22 NUL padding bytes"))
+    # explicit meta variants beyond crafted_meta's per-slot pattern
+    cases.append(name_write_case(
+        200, 103, "Play Chords",
+        meta=bytes([0x10, 0x00, 0x00, 0x00, 0x00, 0x48, 0x00, 0x03, 0x11]),
+        note="the slot-200 hardware reply's meta round-tripped verbatim: "
+             "payload[3] = 0x10 & ~0x10 = 0x00, payload[8] recomputed to "
+             "0x48, payload[9] forced 0x06 over the reply's 0x00"))
+    cases.append(name_write_case(
+        0, 104, "Low Flag",
+        meta=bytes([0x18, 0x7F, 0x7F, 0x7F, 0x7F, 0x00, 0x01, 0x0B, 0x33]),
+        note="0x10 bit set in meta[0] for a LOW slot: clearing is "
+             "unconditional, never slot-gated; opaque bytes at the 7-bit "
+             "maximum round-trip verbatim"))
+    cases.append(name_write_case(
+        511, 105, "Max Meta",
+        meta=bytes([0x7F, 0x7F, 0x7F, 0x7F, 0x7F, 0x7F, 0x7F, 0x7F, 0x7F]),
+        note="all-0x7F meta: payload[3] = 0x7F & ~0x10 = 0x6F, "
+             "payload[8]/payload[9] recomputed over the 0x7F junk"))
+
+    # full chunk_frames stream for one deterministic seeded blob
+    blob = _synth_blob(2026, "chunk-frames")
+    assert len(blob) == p.BLOB_SIZE and all(b <= 0x7F for b in blob)
+    chunk_raws = p.chunk_frames(blob)
+    assert len(chunk_raws) == p.CHUNK_COUNT
+    for i, raw in enumerate(chunk_raws):
+        f = p.parse(raw)
+        assert f.seq == (i + 1) % 128
+        assert f.cmd == (p.CMD_CHUNK_LAST if i == p.CHUNK_COUNT - 1
+                         else p.CMD_CHUNK_MORE)
+        assert len(f.data) == p.CHUNK_SIZE
+    assert bytes(p.assemble_blob([p.parse(r) for r in chunk_raws])) == blob
+    cases.append({
+        "kind": "chunk_frames",
+        "blob_seed": 2026,
+        "blob_label": "chunk-frames",
+        "blob_hex": hx(blob),
+        "blob_sha256": p.digest(blob),
+        "chunk_count": p.CHUNK_COUNT,
+        "chunk_seqs": [(i + 1) % 128 for i in range(p.CHUNK_COUNT)],
+        "frames": [hx(r) for r in chunk_raws],
+        "note": "blob = _synth_blob(2026, 'chunk-frames'): concatenated "
+                "sha256('2026:chunk-frames:<counter>') digests, each byte "
+                "& 0x7F, truncated to 4672. 145 x 0x16 + 1 x 0x17, len "
+                "byte 0x20, 32 payload bytes each; seqs (i+1) % 128 "
+                "continue from the go frame's 0 and wrap THROUGH 0 at "
+                "chunk index 126. Chunks carry no address and no checksum.",
+    })
     return emit(
         "frames.json",
         "Every request/frame builder in microfreak.protocol, for slots "
@@ -198,11 +249,17 @@ def gen_frames() -> int:
         "name_write_frame cases feed reply-form meta (0x10 bit set for "
         "slots >= 128, junk in meta[5]/meta[6]) to pin the direction-"
         "dependent recompute: payload[3] = meta[0] & ~0x10, payload[8] = "
-        "pos, payload[9] = 0x06. " + HEX_NOTE + " " + REGEN,
+        "pos, payload[9] = 0x06 — plus explicit meta variants (a hardware "
+        "reply's meta verbatim, the 0x10 bit on a low slot, all-0x7F). The "
+        "one chunk_frames case pins the complete 146-frame chunk stream "
+        "for a seeded blob, listed under 'frames'. " + HEX_NOTE + " " + REGEN,
         cases)
 
 
 # --------------------------------------------------------- name_replies.json
+
+SYNTH_REPLY_SLOTS = [0, 127, 128, 383, 384, 511]     # bank + payload[9] edges
+
 
 def gen_name_replies() -> int:
     cases = []
@@ -213,19 +270,47 @@ def gen_name_replies() -> int:
         info = p.decode_name_reply(p.parse(raw))
         assert info.name == expected_name, (slot, info.name, expected_name)
         assert info.slot == slot
-        cases.append({"slot": slot, "payload": hx(data), "frame": hx(raw),
+        cases.append({"slot": slot, "source": "hardware-2026-09-01",
+                      "payload": hx(data), "frame": hx(raw),
+                      "expected": {"slot": info.slot, "name": info.name,
+                                   "meta": hx(info.meta)}})
+    # synthetic boundary-slot replies rendered by the reference sim
+    for slot in SYNTH_REPLY_SLOTS:
+        sim = SimulatedMicroFreak.factory_fresh(reply_lag=False)
+        sim.send(p.read_name_req(1, slot))
+        reply = sim.receive(0.0)
+        assert reply is not None and sim.faults == []
+        data = p.parse(reply).data
+        assert len(data) == p.NAME_PAYLOAD_LEN
+        raw = p.frame(0, 0x23, p.CMD_NAME, data)   # normalized seq, as above
+        info = p.decode_name_reply(p.parse(raw))
+        assert info.slot == slot
+        expected_name = f"Patch {slot:03d}" if slot < 512 - 269 else "Init"
+        assert info.name == expected_name, (slot, info.name)
+        # positional-meta invariants the sim must honor (write-protocol.md)
+        assert bool(info.meta[0] & p.REPLY_META_FLAG) == (slot >= p.SLOTS_PER_BANK)
+        assert info.meta[5] == slot % p.SLOTS_PER_BANK
+        assert info.meta[6] == (0 if slot < p.HIGH_BANK_BOUNDARY else 1)
+        cases.append({"slot": slot,
+                      "source": "synthetic-factory_fresh(seed=0)",
+                      "payload": hx(data), "frame": hx(raw),
                       "expected": {"slot": info.slot, "name": info.name,
                                    "meta": hx(info.meta)}})
     return emit(
         "name_replies.json",
-        "The five hardware 0x52 name-reply payloads captured 2026-09-01 "
-        "(fw 5.x), verbatim from tests/test_sysex.py, wrapped in the frame "
-        "envelope with seq 0x00 and the realistic len byte 0x23 (the parser "
-        "does not validate the len byte). 'expected' is decode_name_reply's "
-        "output: embedded slot, decoded name (printable-filtered, split at "
-        "first NUL, stripped), and the 9 meta bytes payload[3..11] verbatim "
-        "(note slot 200 carries category 0x03/attribute 0x11, and slots "
-        ">= 128 carry the reply-only 0x10 flag in meta[0]). "
+        "0x52 name-reply payloads with their expected decode. The five "
+        "'hardware-2026-09-01' cases are captured payloads (fw 5.x), "
+        "verbatim from tests/test_sysex.py; the six "
+        "'synthetic-factory_fresh(seed=0)' cases are rendered by the "
+        "reference SimulatedMicroFreak for the boundary slots "
+        f"{SYNTH_REPLY_SLOTS} (bank edges 127/128 flip the reply-only 0x10 "
+        "flag in meta[0]; 383/384 flip the payload[9] high-bank flag in "
+        "meta[6]). All are wrapped in the frame envelope with seq 0x00 and "
+        "the realistic len byte 0x23 (the parser does not validate the len "
+        "byte). 'expected' is decode_name_reply's output: embedded slot, "
+        "decoded name (printable-filtered, split at first NUL, stripped), "
+        "and the 9 meta bytes payload[3..11] verbatim (note hardware slot "
+        "200 carries category 0x03/attribute 0x11). "
         + HEX_NOTE + " " + REGEN,
         cases)
 
@@ -282,6 +367,123 @@ def gen_write_burst() -> int:
         "and payload[9]=0x06. No checksum exists anywhere. "
         + HEX_NOTE + " " + REGEN,
         cases)
+
+
+# --------------------------------------------------- write_conversation.json
+
+def gen_write_conversation() -> int:
+    from microfreak.device import MicroFreak
+    slot = 300
+    sim = SimulatedMicroFreak.factory_fresh(reply_lag=False)
+    fc = FakeClock()
+    mf = MicroFreak(sim, clock=fc, sleep=fc.sleep)
+    blob = _synth_blob(7, "write-conversation")
+    assert len(blob) == p.BLOB_SIZE and all(b <= 0x7F for b in blob)
+    meta_in = sim.peek(slot).meta            # reply-form, as a real read yields
+    name = "Conversation 300"
+    report = mf.write(slot, Preset(name=name, blob=blob, meta=meta_in))
+    assert report.verified is True and report.slot == slot
+    assert report.sha256 == p.digest(blob) and report.name == name
+    assert sim.faults == [], sim.faults
+    after = sim.peek(slot)
+    assert after.blob == blob and after.name == name
+    outs = sum(1 for d, _ in sim.wire_log if d == "out")
+    ins = sum(1 for d, _ in sim.wire_log if d == "in")
+    # write burst: 151 out / 151 in; verify dump: open + 146 pulls / 146 chunks
+    assert (outs, ins) == (298, 297), (outs, ins)
+    acks = sum(1 for d, raw in sim.wire_log
+               if d == "in" and p.parse(raw).cmd == p.CMD_NEXT)
+    assert acks == 149, acks
+    case = {
+        "slot": slot,
+        "name": name,
+        "meta": hx(meta_in),
+        "blob_seed": 7,
+        "blob_label": "write-conversation",
+        "blob_hex": hx(blob),
+        "blob_sha256": p.digest(blob),
+        "report": {"slot": report.slot, "sha256": report.sha256,
+                   "name": report.name, "verified": True},
+        "counts": {"out_frames": outs, "in_frames": ins,
+                   "write_acks": acks, "verify_chunks": p.CHUNK_COUNT},
+        "transcript": transcript(sim),
+    }
+    return emit(
+        "write_conversation.json",
+        "One complete VERIFIED write conversation: MicroFreak.write(300, "
+        "preset, verify=True) against factory_fresh(reply_lag=False), "
+        "blob = _synth_blob(7, 'write-conversation'). The transcript is "
+        "every wire frame both directions in order: the 7-frame gate "
+        "sequence (read-name + reply, long 0x52 + ack, short 0x52 open + "
+        "ack, go seq 0 + ack, 145 x 0x16 + 1 x 0x17 each acked, read-back "
+        "+ reply), THEN the verify read-back dump (open, unanswered, plus "
+        "146 pull/chunk lockstep pairs) whose reassembled blob must "
+        "sha256-match what was sent. Slot 300: bank 2/pos 0x2C, meta[0] "
+        "carries the reply-only 0x10 flag (>= 128, cleared outbound), "
+        "payload[9] high-bank flag 0 (< 384). Session seqs: 1 (read), 2 "
+        "(name write), 3 (open), 4 (read-back), 5 (dump open), pulls "
+        "6..127 then 1..24 (the addressed counter skips 0); the go/chunk "
+        "stream is 0 then (i+1) % 128, wrapping through 0. 'report' is "
+        "the WriteReport (duration omitted — fake-clock timing is not "
+        "part of the contract). " + HEX_NOTE + " " + REGEN,
+        [case])
+
+
+# ------------------------------------------------------- device_state.json
+
+def gen_device_state() -> int:
+    seed, init_copies, slots = 0, 269, p.SLOTS
+    named = slots - init_copies
+    sim = SimulatedMicroFreak.factory_fresh(init_copies=init_copies, seed=seed)
+    state = {}
+    records = []
+    shas = set()
+    for slot in range(slots):
+        pr = sim.peek(slot)
+        sha = p.digest(pr.blob)
+        state[f"{slot:03d}"] = {"name": pr.name, "sha256": sha,
+                                "meta": hx(pr.meta)}
+        records.append(SlotRecord(slot=slot, name=pr.name, sha256=sha,
+                                  meta=pr.meta, blob=None))
+        shas.add(sha)
+        # positional-meta invariants, every slot
+        assert bool(pr.meta[0] & p.REPLY_META_FLAG) == (slot >= p.SLOTS_PER_BANK)
+        assert pr.meta[5] == slot % p.SLOTS_PER_BANK
+        assert pr.meta[6] == (0 if slot < p.HIGH_BANK_BOUNDARY else 1)
+    init_sha = p.digest(_synth_blob(seed, "init"))
+    assert state["000"]["name"] == "Patch 000"
+    assert state[f"{named - 1:03d}"]["name"] == f"Patch {named - 1:03d}"
+    assert all(state[f"{s:03d}"]["name"] == "Init"
+               and state[f"{s:03d}"]["sha256"] == init_sha
+               for s in range(named, slots))
+    assert len(shas) == named + 1, len(shas)          # 243 distinct + 1 Init
+    expendable = find_expendable(records)
+    assert expendable == set(range(named, slots)), "expendable != init zone"
+    case = {
+        "seed": seed,
+        "init_copies": init_copies,
+        "slots": slots,
+        "named_slots": named,
+        "init_blob_sha256": init_sha,
+        "distinct_sha_count": len(shas),
+        "expected_expendable": {"first_slot": named, "count": init_copies},
+        "state": state,
+    }
+    return emit(
+        "device_state.json",
+        "The deterministic factory state of SimulatedMicroFreak."
+        "factory_fresh(seed=0, init_copies=269): all 512 slots as "
+        "zero-padded slot -> {name, sha256 of the 4672-byte blob, meta "
+        "(reply-form, 9 bytes)}. Slots 0..242 are distinct named presets "
+        "'Patch NNN' with per-slot _synth_blob(0, 'slot<NNN>') blobs; "
+        "slots 243..511 are 269 byte-identical factory 'Init' duplicates "
+        "of _synth_blob(0, 'init') — so find_expendable (threshold 3) "
+        "returns exactly the init zone, and meta is positionally correct "
+        "(0x10 flag in meta[0] for slots >= 128, meta[5]=pos, meta[6] "
+        "flips 0->1 at slot 384). A Swift factoryFresh with the same seed "
+        "must reproduce every name, sha and meta byte for snapshot/sync/"
+        "expendability parity. " + HEX_NOTE + " " + REGEN,
+        [case])
 
 
 # ------------------------------------------------------------ read_dump.json
@@ -622,6 +824,8 @@ def main() -> None:
     gen_frames()
     gen_name_replies()
     gen_write_burst()
+    gen_write_conversation()
+    gen_device_state()
     gen_read_dump()
     gen_reply_lag()
     gen_sync_diff()

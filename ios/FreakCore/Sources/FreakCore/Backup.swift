@@ -1,5 +1,6 @@
 // Backup.swift — BackupSet: the phase-0 on-disk backup format, unchanged
-// (backup.py).
+// (port of backup.py), plus the shared on-disk helpers (AtomicFile, JSON and
+// hex encodings pinned by §10 of the architecture spec).
 //
 //     <dest>/
 //       index.json        {"created": ISO8601, "slots": N,
@@ -9,43 +10,107 @@
 //                                     name_ms_median, dump_ms_median}}
 //       presets/NNN.bin   the 4672-byte blob, zero-padded 3-digit slot number
 //
-// Byte-role-compatible with what `mfcap backup` writes today, so existing
-// backups open unchanged. `meta_hex` (18 hex chars) is additive; loading an
-// old index without it yields records whose meta is nil, and preset(slot:) on
-// such a slot throws .integrity — old backups remain readable for
-// diff/analysis; they only lack write-back capability.
+// Interop is a hard requirement: a backup written on the iPad opens
+// unchanged in the Python core and vice versa (same layout, file names,
+// JSON keys, value types and encodings; key order and whitespace are free).
+// `meta_hex` (18 hex chars) is additive; loading an old index without it
+// yields records whose meta is nil, and preset(_:) on such a slot throws
+// .integrity — old backups remain readable for diff/analysis; they only
+// lack write-back capability.
 //
 // Creation goes through MicroFreakDevice.backup only (there is no
 // BackupSet.create taking a device — one mutation/IO path).
 
 import Foundation
 
-/// Write text via Data.write(options: .atomic) — temp file + rename, the
-/// same guarantee as Python's mkstemp + os.replace; readers never see a
-/// torn file.
-func atomicWriteText(_ text: String, to url: URL) throws {
-    try Data(text.utf8).write(to: url, options: .atomic)
+enum AtomicFile {
+    /// Write via temp file + atomic replace — the same guarantee as Python's
+    /// mkstemp + os.replace; readers never see a torn file. Throws .integrity
+    /// on failure.
+    static func write(_ data: Data, to url: URL) throws {
+        do {
+            try data.write(to: url, options: .atomic)
+        } catch {
+            throw FreakError.integrity(path: url.path,
+                                       detail: "atomic write failed: \(error)")
+        }
+    }
 }
 
 /// JSON writing: schema-identical to the Python (same keys, null for absent
-/// medians); byte order of keys may differ — both implementations read
-/// either (§10 deviation 10).
-func jsonText(_ object: [String: Any]) throws -> String {
-    let data = try JSONSerialization.data(
+/// medians); byte order of keys may differ — both implementations' parsers
+/// accept either.
+func jsonData(_ object: [String: Any]) throws -> Data {
+    try JSONSerialization.data(
         withJSONObject: object,
         options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
-    return String(decoding: data, as: UTF8.self)
 }
 
-/// A loaded, hash-verified phase-0 backup directory. Immutable after load —
-/// a Sendable struct (it crosses the actor boundary in backup/restore).
+/// "yyyy-MM-dd'T'HH:mm:ss", local time, no fraction, no zone — matches
+/// Python's time.strftime("%Y-%m-%dT%H:%M:%S").
+func isoNow() -> String {
+    let fmt = DateFormatter()
+    fmt.locale = Locale(identifier: "en_US_POSIX")
+    fmt.timeZone = TimeZone.current
+    fmt.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
+    return fmt.string(from: Date())
+}
+
+/// Median as mfcap.midi.backup computes it: sorted()[count / 2] (upper
+/// median), rounded to 1 decimal. nil for an empty list.
+func median(_ xs: [Double]) -> Double? {
+    guard !xs.isEmpty else { return nil }
+    return roundTo(xs.sorted()[xs.count / 2], places: 1)
+}
+
+/// Round half-to-even (banker's), matching Python's round() — so timing
+/// values written to index.json are identical to the reference core even on
+/// exact .5 boundaries (round(2.25, 1) == 2.2, not 2.3).
+func roundTo(_ x: Double, places: Int) -> Double {
+    let f = pow(10.0, Double(places))
+    return (x * f).rounded(.toNearestOrEven) / f
+}
+
+extension Data {
+    /// Contiguous hex (no separators), any case; nil on malformed input.
+    init?(hexString: String) {
+        let chars = Array(hexString.utf8)
+        guard chars.count % 2 == 0 else { return nil }
+        var out = Data(capacity: chars.count / 2)
+        var i = 0
+        while i < chars.count {
+            guard let hi = Data.nibble(chars[i]), let lo = Data.nibble(chars[i + 1]) else {
+                return nil
+            }
+            out.append(hi << 4 | lo)
+            i += 2
+        }
+        self = out
+    }
+
+    private static func nibble(_ c: UInt8) -> UInt8? {
+        switch c {
+        case 0x30...0x39: return c - 0x30           // 0-9
+        case 0x61...0x66: return c - 0x61 + 10      // a-f
+        case 0x41...0x46: return c - 0x41 + 10      // A-F
+        default: return nil
+        }
+    }
+
+    /// Lowercase contiguous hex — matches Python bytes.hex().
+    var hexString: String {
+        map { String(format: "%02x", $0) }.joined()
+    }
+}
+
+/// A loaded, hash-verified phase-0 backup directory. Immutable after load.
 public struct BackupSet: Sendable {
-    public struct Entry: Sendable, Equatable {
-        public let slot: Int
-        public let name: String?
-        public let bytes: Int?
-        public let sha256: String?
-        public let metaHex: String?      // 18 hex chars; nil on pre-meta phase-0 indexes
+    struct Entry: Sendable, Equatable {
+        let slot: Int
+        let name: String?
+        let bytes: Int?
+        let sha256: String?
+        let metaHex: String?      // 18 hex chars; nil on pre-meta phase-0 indexes
     }
 
     public let path: URL
@@ -53,17 +118,17 @@ public struct BackupSet: Sendable {
     public let timing: TimingReport
     private let entries: [Int: Entry]
 
-    /// Load and verify: re-hashes every blob file against the index sha256,
-    /// ascending slot order; .integrity names the first bad slot (missing
-    /// file or sha mismatch). .libraryCorrupt on an unparseable index.
-    public static func load(from path: URL) throws -> BackupSet {
+    /// Load and verify: re-hashes EVERY blob file against its recorded
+    /// sha256, ascending slot order. First bad slot -> .integrity naming it;
+    /// missing blob file -> .integrity; unparseable index / missing
+    /// "presets" table -> .libraryCorrupt. Synchronous file IO; callers off
+    /// the main thread wrap it in a Task.
+    public static func load(_ path: URL) throws -> BackupSet {
         let indexPath = path.appendingPathComponent("index.json")
         let object: Any
         do {
             let raw = try Data(contentsOf: indexPath)
             object = try JSONSerialization.jsonObject(with: raw)
-        } catch let e as FreakError {
-            throw e
         } catch {
             throw FreakError.libraryCorrupt(path: indexPath.path,
                                             detail: String(describing: error))
@@ -91,7 +156,7 @@ public struct BackupSet: Sendable {
                     throw FreakError.integrity(path: binPath.path,
                                                detail: "slot \(slot): blob file missing")
                 }
-                if FreakProtocol.digest(blob) != sha {
+                if Wire.digest(blob) != sha {
                     throw FreakError.integrity(path: binPath.path,
                                                detail: "slot \(slot): sha256 mismatch")
                 }
@@ -115,17 +180,21 @@ public struct BackupSet: Sendable {
     }
 
     /// Entry exists AND has a sha256.
-    public func covers(slot: Int) -> Bool {
+    public func covers(_ slot: Int) -> Bool {
         guard let v = entries[slot], let sha = v.sha256 else { return false }
         return !sha.isEmpty
     }
 
+    /// Ascending.
     public func coveredSlots() -> [Int] {
-        entries.keys.filter { covers(slot: $0) }.sorted()
+        entries.keys.filter { covers($0) }.sorted()
     }
 
-    public func preset(slot: Int) throws -> Preset {
-        guard covers(slot: slot) else {
+    /// Reads NNN.bin lazily. .slotOutOfRange when not covered; .integrity
+    /// when meta_hex is absent (a pre-meta phase-0 index — re-backup to
+    /// restore). name nil in the index -> "".
+    public func preset(_ slot: Int) throws -> Preset {
+        guard covers(slot) else {
             throw FreakError.slotOutOfRange(slot: slot)
         }
         let v = entries[slot]!
@@ -144,7 +213,7 @@ public struct BackupSet: Sendable {
         return try Preset(name: v.name ?? "", blob: blob, meta: meta)
     }
 
-    /// name + sha + meta per entry; blob nil (lazy).
+    /// name + sha + meta per indexed slot; blob always nil (lazy).
     public func records() -> [SlotRecord] {
         entries.keys.sorted().map { slot in
             let v = entries[slot]!

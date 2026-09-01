@@ -1,584 +1,477 @@
-The context is read — core API contract, wire protocol, and project voice are all clear. Here is the complete specification.
+# Freak Librarian — iPad UX Specification
 
----
+**Version 2.0 — 2026-09-01.** Supersedes the v1 draft in full.
 
-# MicroFreak Librarian — iPad UX Specification
+**Scope:** screens, flows, states, interaction rules, and the app-structure contract (navigation, view inventory, view-model responsibilities, state ownership) for the SwiftUI iPad app `FreakLibrarian` at `/Users/ericbrookfield/Development/mfcap/ios/App`, built on the `FreakCore` Swift package. Behavior and structure only; no visual-brand direction beyond the semantic color/badge roles defined here.
 
-**Scope:** Screens, flows, states, and the view-model contract for the SwiftUI iPad app in `/Users/ericbrookfield/Development/mfcap/ios`, built against a `FreakCore` protocol seam so the UI compiles and runs (in demo mode) before the Swift core lands. Structure and behavior only; no visual-brand direction.
+**Ground truth:** `/Users/ericbrookfield/Development/mfcap/docs/core-api.md` and `/Users/ericbrookfield/Development/mfcap/docs/write-protocol.md`. Where this spec restates timing or protocol behavior, those documents win. The UI never touches frames; it talks to FreakCore's slot/preset API only.
 
-**Ground truth referenced throughout:** `/Users/ericbrookfield/Development/mfcap/docs/core-api.md` and `/Users/ericbrookfield/Development/mfcap/docs/write-protocol.md`. Where this spec restates timing or protocol behavior, those documents win.
+**App identity (required):** bundle id `com.ericbrookfield.freaklibrarian`, display name **"Freak Librarian"**, iPad-only, iPadOS 17.0+, landscape-first (portrait supported, never required). *Note: `App/project.yml` currently carries `com.ericbrookfield.microfreak-librarian` / "MicroFreak Librarian" — it must be brought to the values above in the next project pass.*
+
+**User and posture:** one musician, standing at the synth, iPad Pro 13-inch on a stand or held in one arm, landscape. Often only one free hand, often mid-performance-prep. Frequently the synth is *not* plugged in — the app must be fully usable in Practice Mode against the simulated device.
 
 ---
 
 ## 1. Design principles (derived from the protocol, not taste)
 
-1. **Names are free; blobs are expensive.** A name read is ~1 ms; a blob is ~400 ms; a full hashed pass is ~3.5 minutes. Every screen is built names-first: the 512-slot list is interactive within ~2 s of connecting, and nothing silently starts a multi-minute read. Blob-scale work is always an explicit, progress-barred, cancellable operation.
-2. **The full read pass is always a backup.** Since a hashed snapshot and a backup are the same wire traffic, the app has exactly one "read everything" operation, and it always persists to disk in the phase-0 backup format. Refreshing the sync view therefore *produces* a backup; backup freshness is a byproduct of using the app, not a chore.
-3. **One transaction at a time, visibly.** The core session serializes; the app models this as a single explicit device-operation queue with one visible status surface. The UI never pretends the device can do two things at once.
-4. **Emptiness is a verdict, not a fact.** A slot is "empty" only after a content judgment (sha duplicated ≥ 3× or blank read name) over a hashed snapshot. Until hashes exist, slots are *unjudged* and the UI says so. The string "Init" is never special.
-5. **Every overwrite names its victim.** No write proceeds without showing the current occupant of the target slot (name + slot number), whether that occupant is recoverable (library / backup), and how fresh the latest full backup is.
-6. **Demo mode is a first-class device, honestly paced.** The simulated device drives every screen, including realistic backup timing, so the whole app is buildable and testable with no synth attached. Demo is always visibly labeled and never entered or exited silently.
+1. **Names are free; blobs are expensive.** A name read is ~1 ms, a blob ~400 ms, a full hashed pass ~211 s. Every screen is names-first: the 512-slot browser is interactive within ~2 s of connecting; nothing ever silently starts a multi-minute read. Blob-scale work is always explicit, progress-barred, ETA'd, and cancellable.
+2. **The full read pass is always a backup.** A hashed snapshot and a backup are the same wire traffic, so the app has exactly one "read everything" operation and it always persists in the phase-0 backup format. Refreshing the sync view *produces* a backup; backup freshness is a byproduct of using the app.
+3. **One transaction at a time, visibly.** The core session serializes; the app models this as one device-operation queue with one status surface. The UI never pretends the device can do two things at once, and never invents a second spinner vocabulary.
+4. **Emptiness is a verdict, not a fact.** A slot is "empty" only after a content judgment from the core (`findExpendable`: sha duplicated ≥ 3 times among the read records, or a blank successfully-read name). Until hashes exist a slot is *unjudged* and the UI says so. The string "Init" is never special; a failed name read is unknown, never empty.
+5. **Every overwrite previews its victim.** No device write proceeds without showing what it replaces: the occupant's name, whether the slot is judged expendable, and whether the occupant's bytes are recoverable (library or backup). The sync diff computes; only the user writes.
+6. **Practice Mode is a first-class device, honestly labeled and honestly paced.** Every screen, flow, and error state is reachable against `SimulatedMicroFreak`, and simulated state is never mistakable for hardware state (§11).
+7. **Verified means verified.** Writes go through the core's read-back-and-hash-compare path, always; there is no "skip verification" control anywhere in the app. `WriteReport.verified` is `true` or the operation threw — the UI has no "maybe written" state.
 
 ---
 
 ## 2. Slot identity
 
-- **Core addressing:** 0-based `0…511`, `bank = slot / 128`, `pos = slot % 128` — never changes.
-- **Display addressing:** 1-based `1…512`, matching the synth's panel display, which is the user's mental model.
-- **Single conversion point:** a `SlotID` value type owns the mapping. Nothing else in the UI does arithmetic on slot numbers.
+- Core addressing: 0-based `0…511`; `bank = slot / 128`, `pos = slot % 128`.
+- Display addressing: **1-based `1…512`**, matching the synth's panel — the user's mental model.
+- One conversion point: the existing `SlotID` value type (`App/Sources/Support/SlotID.swift`) owns the mapping. No other UI code does slot arithmetic.
 
-```swift
-struct SlotID: Hashable, Comparable, Sendable {
-    let raw: Int                    // 0…511, the core's number
-    var display: Int { raw + 1 }    // 1…512, the panel's number
-    var bank: Int { raw / 128 }     // 0…3
-    var label: String               // "412" (display, 3-digit, monospaced digits)
-    var bankLabel: String           // "Bank 4 · 385–512"
-}
+```
+SlotID.raw        0…511   (core, wire, FreakCore API)
+SlotID.display    1…512   (every list, dialog, toast, badge)
+SlotID.bank       0…3     (display label "Bank 1 · 1–128" … "Bank 4 · 385–512")
 ```
 
-Diagnostics and error detail views show both forms once (`"slot 412 (core 411)"`); every list, dialog, and toast uses the display number only.
+Diagnostic detail views may show both once — `slot 412 (core 411)` — every other surface uses the display number only, 3-digit, monospaced digits.
 
 ---
 
-## 3. Information architecture and navigation
+## 3. Navigation model
 
-Three-column `NavigationSplitView`. Works in full screen, Split View, Slide Over (collapses to stack per standard behavior), and Stage Manager.
+Three-column `NavigationSplitView`, landscape-first. Works in full screen, Split View, Slide Over, and Stage Manager (columns collapse per standard SwiftUI behavior; nothing in this spec depends on a fixed width beyond the reachability rules in §13).
 
 ```
-Sidebar                    Content                        Detail
-───────────────────────    ───────────────────────────    ─────────────────────────
-DEVICE                     SlotListView (512 rows,        SlotDetailView
-  All Slots                sectioned by bank)             (or LibraryEntryDetail /
-  Bank 1  · 1–128                                          SyncSlotDetail /
-  Bank 2  · 129–256        LibraryListView                 BackupDetail)
-  Bank 3  · 257–384        SyncListView
-  Bank 4  · 385–512        BackupListView
-LIBRARY
+Sidebar                     Content column                 Detail column
+─────────────────────────   ───────────────────────────    ─────────────────────────
+DEVICE                      SlotListView                   SlotDetailView
+  All Slots                   (512 rows, bank sections)
+  Bank 1 · 1–128            LibraryListView                LibraryEntryDetailView
+  Bank 2 · 129–256          SyncListView                   SyncSlotDetailView
+  Bank 3 · 257–384          BackupListView                 BackupDetailView
+  Bank 4 · 385–512          ConnectView (when no device
+LIBRARY                       and Device is selected)
   All Presets
   <tag> …
 SYNC
 BACKUPS
-───────────────────────
-[Connection status footer]
+─────────────────────────
+[Connection status capsule]
 ```
 
-- Sidebar bank items scroll the (always-complete) slot list to that section; they are jump targets, not filters.
-- Library tags are sidebar children under Library; selecting one filters the library list.
-- **Global status bar:** a `safeAreaInset(edge: .bottom)` strip across the whole split view. Left: connection state capsule (see §10). Right: the active device operation with a mini progress bar and pause/cancel, or "Idle". Tapping opens the **Operations popover** (current op, queued ops, recent completions/failures). This is the only place device busyness lives, so no screen invents its own spinner vocabulary for device traffic.
-- Sheets (modal, full-height on iPad): `BackupProgressSheet`, `RestorePlanSheet`, `BulkApplyPlanSheet`, `SendPlanSheet` (multi-preset sends), `ConnectSheet`.
+- Sidebar bank rows are **jump targets**, not filters: they scroll the always-complete slot list to that section.
+- Library tags appear as sidebar children; selecting one filters the library list. No folders in v1 (§6).
+- **Global status bar** — a `safeAreaInset(edge: .bottom)` strip across the whole split view (`StatusBarView`). Left: connection capsule (§12). Center-left in Practice Mode: the practice capsule (§11). Right: the active device operation with mini progress bar and a Cancel/Pause control, or "Idle". Tapping opens the **Operations popover**: current op, queued ops, recent completions and failures. This is the only home of device busyness.
+- **Practice banner** (§11) sits above the content column whenever the session is simulated.
+- Sheets (modal): `BackupProgressSheet`, `RestorePlanSheet`, `BulkApplyPlanSheet`, `SendPlanSheet`, `ConnectSheet`. Alerts: single-target overwrite confirmation, error alerts per §14.
+
+Navigation state (`SidebarSelection`, selected slot/entry/backup) lives in `AppModel` and is restorable via `SceneStorage` so a relaunch lands where the user left off (selection only — never a resumed device operation).
 
 ---
 
 ## 4. Data freshness model
 
-The app tracks three tiers of knowledge about the device, all surfaced explicitly:
+Three tiers of knowledge about the device, all surfaced explicitly, none ever implied:
 
-| Tier | How obtained | Cost | UI meaning |
+| Tier | How obtained | Cost | Unlocks |
 |---|---|---|---|
-| **Names** | names-only snapshot (`readBlobs=false`) | ~1–2 s for 512 | slot list populated; no emptiness/diff judgments |
-| **Per-slot content** | single `read(slot)` | ~400 ms | detail view populated; that slot's sha known |
-| **Full content** | full pass = **backup** | ~3.5 min, resumable | sync diff available; emptiness judged; backup fresh |
+| **Names** | names-only snapshot (`readBlobs: false`) | ~1–2 s / 512 | browsable slot list; search; rename |
+| **Per-slot content** | single `read(slot)` | ~400 ms | that slot's sha, judgment, full detail |
+| **Full content** | full pass = backup | ~211 s, resumable | sync diff; emptiness judged everywhere; fresh backup |
 
 Rules:
 
-- On connect (real or demo): run a names-only snapshot automatically. This is the only device operation the app ever starts without being asked.
-- Every verified write returns the written name + sha in its `WriteReport`, so the app **patches its cached snapshot in place** after each write. The sync diff stays live after applies with zero re-reads.
-- A rename patches the cached name.
-- Each cached slot record carries `lastConfirmed: Date`. The device can be edited from its front panel while connected, so the app never claims real-time truth: list headers show "Names as of 14:32 — Refresh (⌘R)".
-- **Backup freshness** is a first-class value: `latestCompleteBackup: (date, path)?` plus `writesSinceBackup: Int` (every device write increments it; a completed full backup resets it). Shown in the sidebar Device footer, the Sync header, and inside every destructive dialog.
+- On connect (hardware or practice): the app automatically runs the names-only snapshot. This is the **only** device operation ever started without an explicit user action.
+- Every verified write returns name + sha in its `WriteReport`; the app **patches the cached snapshot in place**, so the sync diff stays live after applies with zero re-reads. A rename patches the cached name.
+- Every cached record carries `lastConfirmed: Date`. The synth can be edited from its own panel at any time, so list headers state provenance, never truth: "Names as of 14:32 · Refresh".
+- **Backup freshness is a first-class value** (`FreshnessModel`): `latestCompleteBackup: (date, path)?` and `writesSinceBackup: Int` (each device write increments; a completed full backup resets). Shown in the sidebar footer, the Sync header, and inside every destructive dialog.
+- Snapshots and backups are stamped with a device identity — `hardware` or `practice:<profile>` — and the app never diffs, restores, or "undoes" across identities without the explicit cross-identity warning (§11).
 
 ---
 
-## 5. Screens
+## 5. Device slot browser (`SlotListView`)
 
-### 5.1 Connect / No Device
+The home screen. All 512 slots, always — never paged, never truncated, populated from cache instantly on revisit.
 
-Shown as content when state is `noDevice` and nothing else is selected, and always reachable from the status capsule.
-
-- **Layout:** centered column — device glyph, "No MicroFreak connected", the list of visible MIDI endpoints (auto-refreshing via CoreMIDI notifications), a **Connect** button per plausible endpoint, and a prominent **Use Demo Device** button with a profile picker (see §12).
-- Hot-plug: a device appearing triggers a non-modal banner anywhere in the app: "MicroFreak detected — Connect?" Never auto-connects, never interrupts a running demo operation.
-- **States:**
-  - *Empty (no endpoints):* "Connect the MicroFreak by USB." + Use Demo Device.
-  - *Connecting:* endpoint row shows an inline spinner; cancellable.
-  - *Error:* `DeviceNotFoundError` → lists every port seen ("Saw: IAC Bus 1, KeyStep…") so the user can tell a cable problem from a wrong-port problem. `TransportError` → "MIDI backend failed" + Retry + details disclosure.
-
-### 5.2 Device Slot Browser (`SlotListView`)
-
-The home screen. All 512 slots, always — never paged, never truncated.
-
-**Row anatomy** (`SlotRowView`):
+**Row anatomy** (`SlotRowView`, ≥ 52 pt tall):
 
 ```
-[413] Bass Prophet                          ● ↔ ⟳
- │     │                                     │ │  └ activity: this slot has a queued/running op
- │     │                                     │ └── sync badge (only when a current diff exists):
- │     │                                     │     added / changed / missing / in-sync / empty
- │     └ name; italic "Init"-style dimming   └──── judgment dot: occupied / empty / unjudged
- │       is NEVER applied by name — only          (hollow when unjudged)
- │       by content judgment
- └ 3-digit display number, monospaced
+[413] Bass Prophet                                   ●   ↔   ⟳
+  │     │                                            │   │   └ activity: queued/running op on this slot
+  │     │                                            │   └── sync badge (only when a current diff exists):
+  │     │                                            │       added / changed / missing / in-sync / empty
+  │     └ name (23-char max, monospaced-friendly)    └────── judgment dot (§10): filled = real preset,
+  └ display number, 3-digit, monospaced                      outline+dim = expendable, hollow = unjudged
 ```
 
-- Sectioned by bank with sticky headers ("Bank 4 · 385–512").
-- Judgment dot and sync badge appear only when a hashed snapshot exists; otherwise the row shows name + hollow dot. A tooltip/long-press explains "Content not read yet — run a backup or open the slot."
-- A slot whose name read failed (`name == nil`) shows "— read failed" and is treated as *unknown* (never empty, per the core's rule); tapping offers Retry.
-- **Toolbar:** Refresh Names (⌘R, shows relative age), search field (`.searchable`, filters by name/number within the cached names — instant, no device traffic), multi-select (Edit / two-finger drag / ⌘-click).
-- **Context menu / swipe actions per slot:** Save to Library, Send Preset Here… (picker over library), Rename (⏎), Copy (⌘C), Paste (⌘V, = send with guard rails), Show in Sync, Read Now (single 400 ms read to hash/judge just this slot).
-- **Multi-select actions:** Save N to Library (plan sheet; ~400 ms × N unless bytes already on disk from the latest backup — then instant), Send N presets starting at slot … (plan sheet).
-- **States:**
-  - *Loading (initial names pass):* rows render immediately as numbered placeholders with redacted names; names stream in (the pass is ~1–2 s, so this is a shimmer, not a wait screen).
-  - *Device busy (exclusive op running, e.g. backup):* the list stays fully browsable from cache; per-slot device actions are disabled with the reason inline ("Backup in progress — 2:10 left"); the status bar owns the progress.
-  - *Stale after disconnect:* list remains, desaturated, header banner "Showing last known state from 14:32 — device disconnected." All device actions disabled; library-side actions still work.
-  - *Error (names pass failed):* inline banner "Couldn't read names: device stopped responding" + Retry; rows that were read stay populated.
+- Sectioned by bank, sticky headers ("Bank 4 · 385–512"), with per-section counts once judged ("97 presets · 31 empty").
+- **Search** (`.searchable`): filters by name substring and slot number over the cached names — instant, zero device traffic. Search never triggers reads.
+- **Lazy blob detail:** rows never trigger blob reads. Selecting a row shows `SlotDetailView`; if that slot's sha is unknown, the detail offers the explicit ~1 s **Read Slot** action (§7). Scrolling the list costs nothing.
+- A slot whose name read failed (`name == nil`) renders "— read failed" with the unknown (hollow) dot — never "empty" — and offers Retry in its context menu and detail view.
+- **Toolbar:** Refresh Names (shows relative age), search, Select (multi-select), Back Up Now.
+- **Context menu / swipe actions per row:** Save to Library · Send Preset Here… · Rename · Read Now (single ~1 s hash of just this slot) · Show in Sync · Copy / Paste (paste = send, with the §9 confirmation).
+- **Multi-select:** Save N to Library (instant when bytes are already on disk from the latest backup; otherwise a plan sheet stating "~400 ms × N") · Send N presets starting at slot… (plan sheet listing every target and victim).
 
-### 5.3 Slot Detail (`SlotDetailView`)
+**States**
 
-Selected slot in the detail column.
+- *Initial names pass:* numbered rows render immediately with redacted name placeholders; names stream in (~2 s total — shimmer, not a wait screen).
+- *Device busy (exclusive long op):* list stays fully browsable from cache; per-row device actions disabled with the reason inline ("Backup running — 2:10 left"); progress lives in the status bar only.
+- *Disconnected:* list remains, desaturated; header banner "Showing last known state from 14:32 — no device." Device actions disabled; library-side actions (save-from-cache, browse) still work.
+- *Names pass failed:* inline banner with the mapped error (§14) + Retry; already-read rows stay populated.
 
-- Header: display number, editable name field (rename, §5.7), bank, judgment, sync status vs library (if diff exists).
-- Content panel: sha256 (abbreviated, expandable), meta hex, last confirmed time, "identical to N other slots" when the census knows (this is how "empty" is explained honestly), which library entry claims this slot, and which backups cover it (with per-backup sha match/mismatch).
-- If the blob/sha is unknown: a **Read Slot** button ("~1 second") replaces the content panel — blobs are lazy, and this is the lazy trigger.
-- Actions: Save to Library (with tags), Send to Another Slot…, Rename, Restore this slot from backup… (picker over covering backups), Overwrite from Library… .
-- *Loading:* content panel skeleton for the ~400 ms read with the queue position if queued. *Error:* read failure inline with Retry; a `VerifyMismatchError` history badge if this slot's last write failed verification (§9).
+---
 
-### 5.4 Library Browser (`LibraryListView` + `LibraryEntryDetailView`)
+## 6. Local library (`LibraryListView`, `LibraryEntryDetailView`)
 
-The local collection — fully functional with no device at all.
+The local collection — fully functional with no device attached. Backed by FreakCore's `Library` (content-addressed blobs + index).
 
-**Row:** name · tags · assigned slot chip ("→ 413" or none) · on-device status when a diff exists (in-sync / differs / not sent).
+**v1 scope, kept honest:** flat list + **tags** (the core already stores them) + one optional **slot assignment** per entry. **No folders, no smart groups, no ratings, no iCloud sync** in v1 — none of it exists in the core, and the UI does not fake it. Tags are plain strings, assigned in the entry detail, filterable from the sidebar; that is the entire organizational model.
 
-- Toolbar: search (name, tag), sort (name / added / slot), New from file (imports `.mfpreset` / raw 4672-byte blob via file importer), tag manager.
-- Context menu: Send to Slot…, Assign Slot (no traffic — sets the entry's desired slot; the *diff* then shows it as "missing" until sent), Clear Slot Assignment, Rename Entry (local, instant, no device dialog), Duplicate Entry, Tags…, Export (share sheet as `.mfpreset`), Delete.
-- **Delete guard rail:** names the entry, states whether its blob is shared with other entries ("the blob stays; 2 other entries use it") or will be removed, and whether it is currently in-sync on the device ("still on the device in slot 413 — deleting the library copy does not touch the device").
-- **Slot claim rule surfaced:** assigning a slot that another entry claims shows "This replaces 'Old Bass' as the preset assigned to slot 413 (library only — the device is not touched)."
-- Entry detail: name, sha, meta, tags, assigned slot, added date, provenance (imported from device slot N on date / from file), sync status, actions as above.
-- **States:** *Empty:* "Your library is empty" + three CTAs: "Save presets from the device" (jumps to device browser multi-select), "Import the whole device" (runs `importSnapshot` off the latest backup — requires one; offers to run it), "Import a file." *Loading:* instant (local disk) — no designed loading state beyond first-launch index parse. *Error:* `IntegrityError` on an entry (blob fails its hash) → entry row gets a corruption badge; detail explains the file path and offers Remove Entry / Re-import from device if in-sync copy exists. `LibraryCorruptError` on open → full-screen error naming the index path, offering to move the folder aside and start fresh (never silently deletes).
+**Row:** name · tag chips · slot-claim chip ("→ 413" or none) · sync hint when a current diff exists (in-sync / differs / not on device).
 
-### 5.5 Sync Diff View (`SyncListView`)
+- Toolbar: search (name, tag) · sort (name / date added / slot) · Import File (`.mfpreset` or raw 4672-byte blob via file importer) · Import Device… (runs `importSnapshot` off the latest complete backup; offers to run a backup if none exists; expendable slots skipped by default, stated in the sheet).
+- Context menu: Send to Slot… · Assign Slot… (local only — sets the entry's desired slot; the diff then shows `missing` until sent) · Clear Slot Assignment · Rename (inline, local, instant) · Duplicate · Tags… · Export (share sheet, `.mfpreset`) · Delete.
+- **Slot-claim rule surfaced:** assigning a slot another entry claims shows "This replaces 'Old Bass' as the preset assigned to slot 413. Library only — the device is not touched." (The core clears the other claim.)
+- **Delete guard:** names the entry; states whether the blob file survives ("2 other entries share these bytes") or is removed; states device impact honestly ("still on the device in slot 413 — deleting the library copy does not touch the device").
 
-The heart of the librarian: device vs library, per slot.
+**States:** *Empty* — teaching state with three CTAs: "Save presets from the device", "Import the whole device" (via backup), "Import a file". *Loading* — local disk; no designed wait beyond first index parse. *Errors* — `IntegrityError` on an entry: corruption badge on the row, detail names the blob path, offers Remove Entry or Re-import (when an in-sync device copy exists); `LibraryCorruptError` on open: full-screen error naming the index path, offering to move the folder aside and start fresh — never silently deletes anything.
 
-**Precondition banner (the honest gate):** the diff requires a fully hashed snapshot. Header always shows provenance: "Compared against device contents read 12 min ago (backup 2026-09-01-1432) · 3 writes since." If no hashed snapshot exists or it is older than the last unpatched change, the list is replaced by a CTA state: "To compare, the app reads every slot (~3.5 minutes) and saves it as a backup." → **Read Device & Compare** (runs backup → diff). Because verified writes patch the snapshot (§4), applying diff rows does *not* invalidate the diff.
+---
 
-**Layout:** one row per slot with a non-`inSync` status by default; a filter bar with counts toggles each status: `Added (device only) 12 · Changed 3 · Missing (library only) 5 · In sync 223 · Empty 269`.
+## 7. Preset detail (`SlotDetailView` / `LibraryEntryDetailView`)
 
-**Row:**
+One layout serves both, differing only in the action row. Fields, top to bottom:
 
-```
-[413]  device: "Bass Prophet"   ↔ changed ↔   library: "Bass Prophet v2"     [Pull ←] [→ Push]
-[097]  device: "Weird Organ"      added        library: —                    [Import ←]
-[510]  device: (empty)            missing      library: "Fat Bass"           [→ Send]
-```
+1. **Name** — large, editable in place (§8.2 rename flow for device slots; instant local rename for library entries). Character counter appears at 18/23.
+2. **Slot / claim line** — device: "Slot 413 · Bank 4"; library: assigned-slot chip or "no slot assigned".
+3. **Judgment line** (device slots) — "Preset" / "Empty — identical to 268 other slots" / "Empty — blank name" / "Unjudged — content not read yet" / "Unknown — name read failed". The evidence is the copy; the app never says just "empty".
+4. **Category byte** — the preset's meta byte 7 (long-0x52 payload[10]), shown as `Category 0x0B` with a friendly label *only* when the (hardware-verified) mapping table in `Formatters.swift` knows it; otherwise raw hex with an info popover: "Category as stored by the synth. Labels appear once the mapping is confirmed against hardware." Meta is round-tripped verbatim by the core; **v1 never edits the category byte** — display only.
+5. **SHA-256** — first 12 chars shown, monospaced; tap to expand full hash / copy. Absent → the **Read Slot** button ("about 1 second") replaces this block; that is the lazy-blob trigger, and it also patches the browser row's judgment.
+6. **Meta** — collapsed "Advanced" disclosure: 18-char meta hex, attribute byte, last-confirmed timestamp.
+7. **Cross-references** — device slot: which library entry claims this slot; which backups cover it (per-backup sha match/mismatch chips). Library entry: provenance ("imported from device slot 97 on 2026-09-01" / "imported from file"), duplicate-sha note ("bytes shared with 2 other entries").
+8. **Slot history** (device slots) — reverse-chronological journal of what *this app* has observed and done to this slot, from the local history store (§15): snapshot observations (name/sha seen), verified writes (source preset + name + sha), renames (old → new), restores (which backup), verify failures, torn writes, cancels. Each row: icon, one-line summary, relative time. Capped display at 20 with "Show all". Header caveat, always visible: "History of this app's activity — changes made on the synth itself appear only as differences at the next read."
 
-Per-status single-row actions (every one is explicit; the diff never auto-writes, mirroring the core):
+**Actions (device slot):** Save to Library (with tags) · Send to Another Slot… · Rename · Overwrite from Library… · Restore this slot from backup… (picker over covering backups). **Actions (library entry):** Send to Slot… · Assign Slot · Export · Duplicate · Delete.
 
-| Status | Action(s) | Cost | Guard rail |
-|---|---|---|---|
-| `added` (DEVICE_ONLY) | **Import to library** | instant (bytes on disk from the snapshot-backup) | none — additive |
-| `missing` (LIBRARY_ONLY) | **Send to device** | ~1 s verified write | names the slot's current (empty-judged) content; §6 |
-| `changed` (DIFFERS) | **Push library → device** / **Pull device → library** | push ~1 s; pull instant | push: full overwrite dialog naming the device preset. Pull: creates a *new* library entry claiming the slot; dialog states the old entry loses its slot claim but is kept |
-| `inSync` | none (row is informational) | — | — |
-| `empty` | none by default; row explains the judgment ("blob identical to 268 other slots") | — | — |
+**States:** unread blob → Read Slot CTA (above); reading → 400 ms skeleton with queue position if queued; read failed → inline error + Retry; slot flagged `verifyFailed` or `torn` → the persistent badge and its recovery actions (§14).
 
-**Bulk apply:** toolbar **Apply…** opens `BulkApplyPlanSheet`:
+---
 
-- Sections by action type: "Import 12 to library", "Send 5 to device", "Conflicts (3)".
-- Imports and sends are pre-checked; **conflicts (`changed`) are never pre-resolved** — each conflict row requires an explicit per-row direction choice (Push / Pull / Skip, default Skip).
-- Every device-write row shows its victim: "510 · replaces empty slot" / "413 · replaces 'Bass Prophet'".
-- Footer: totals, estimated time ("5 writes ≈ 5 s"), backup freshness line, and the destructive confirm button labeled with the write count: **"Write 5 Slots to Device"**.
-- Execution runs as one queued operation with per-row progress ticks in the sheet; a failed write stops the batch (mirroring restore semantics), marks completed rows done, and offers Retry Remaining.
+## 8. Writing to the device
 
-**Sync detail** (`SyncSlotDetailView`, on row selection): both sides' names/shas, judgment evidence, and the same actions with full context.
+### 8.1 Send / drag a preset to a slot
 
-**States:** *No snapshot:* CTA state above. *Empty result (everything in sync):* "Device and library match — 243 presets in sync, 269 empty slots" with timestamp. *Snapshot running:* progress state inherited from the backup operation (this screen shows the same progress inline). *Stale:* header ages; turns into a warning ("compared 3 days ago") past 24 h with a Re-read button. *No library yet:* points at the library empty state ("Import the whole device" is one tap from here).
+All payload movement goes through one `Transferable` type (`PresetTransfer`, already in `App/Sources/Models/`): source is a library entry, a device slot, or a backup row; the display name rides along for drop feedback; an `.mfpreset` file representation is exported lazily for drags leaving the app.
 
-### 5.6 Send Preset to Slot — the drag
-
-The flagship interaction. All payloads move through one `Transferable` type:
-
-```swift
-struct PresetTransfer: Transferable, Codable, Sendable {
-    enum Source: Codable { case library(entryID: String)
-                           case deviceSlot(SlotID)          // blob may need a read on drop
-                           case backup(path: String, slot: SlotID) }
-    let source: Source
-    let displayName: String
-    // FileRepresentation (.mfpreset) exported lazily for drags leaving the app
-}
-```
-
-**Drag sources:** library rows (multi-drag supported), device slot rows (if the blob isn't cached locally, the drop performs a single ~400 ms read first — the drop target shows "reading…" during it), backup detail rows.
+**Drag sources:** library rows (multi-drag supported) · device slot rows (if the blob isn't cached, the *drop* performs one ~400 ms read first — the target shows "reading…") · backup detail rows.
 
 **Drop targets and semantics:**
 
-| Drop | Meaning | Traffic |
+| Drop | Meaning | Wire cost |
 |---|---|---|
-| Library entry → device slot row | send to that slot | 1 verified write |
-| N library entries → device slot row | send to consecutive slots starting there → `SendPlanSheet` listing every target + victim | N writes |
-| Device slot → library list | save to library (entry assigned to source slot) | 1 read if uncached |
-| Device slot → device slot | copy preset between slots | 1 read (if uncached) + 1 write |
-| `.mfpreset` file (Files app / another window) → library or slot row | import / send | 0 / 1 write |
-| Library or slot row → outside the app | export `.mfpreset` | 0 |
+| Library entry → slot row | send to that slot | 1 verified write (~1 s) |
+| N library entries → slot row | send to N consecutive slots → `SendPlanSheet` | N verified writes |
+| Slot row → library list | save to library, entry assigned to source slot | 1 read if uncached |
+| Slot row → slot row | copy between slots | ≤1 read + 1 verified write |
+| `.mfpreset` file → library / slot row | import / send | 0 / 1 write |
+| Row → outside the app | export `.mfpreset` | 0 |
 
-**Drop feedback:** the hovered slot row shows a destination ring plus a live caption of the consequence — `"Send 'Fat Bass v2' here — replaces 'Perc Organ'"` or `"…— replaces empty slot"`. Springloading: hovering a sidebar bank item mid-drag scrolls the list there.
+**Drop feedback:** hovered slot row shows a destination ring plus a live consequence caption — "Send 'Fat Bass v2' here — replaces 'Perc Organ'" or "… — replaces empty slot (Init-duplicate)". Hovering a sidebar bank row mid-drag springloads the list to that bank.
 
-**The drop is intent, not consent.** Every drop that writes to the device raises the overwrite confirmation (§6) — a compact popover anchored at the drop row for empty-judged targets (one tap: **Send**), the full dialog for occupied or unjudged targets. Escape cancels; nothing has touched the wire before confirmation.
+**The drop is intent, not consent.** Every drop that would write raises the §9 confirmation *anchored at the drop row* — a one-tap popover when the victim is judged expendable, the full dialog otherwise. Nothing touches the wire before confirmation; Esc or tap-outside cancels.
 
-**Non-drag equivalents (parity required):** context menu "Send to Slot…" opens a slot picker (the 512-list in a sheet, with `pickScratchSlot` preselecting the suggested safe slot when one exists and the picker filtered to "empty first"); copy/paste (⌘C a library entry or slot, ⌘V on a slot row) goes through the identical confirmation.
+**Non-drag parity (required):** context-menu "Send to Slot…" opens a slot picker — the 512-row list in a sheet, empty-judged slots grouped first, with the core's `pickScratchSlot` suggestion preselected when one exists ("Suggested: slot 509 — empty"). Copy/paste on rows goes through the identical confirmation. Every drag flow must be completable by taps alone (§13).
 
-After any successful send: toast "Sent 'Fat Bass v2' to slot 510 — verified", with **Undo** when the victim is recoverable (§6).
+### 8.2 Verified-write feedback
 
-### 5.7 Rename
+A single write is one queued quick op with four visible phases on the target row and in the status bar:
 
-- **Inline:** Return (or context menu → Rename) on a slot row or library row swaps the name label for a `TextField`. Live validation: printable ASCII only (illegal characters rejected at input), counter appears at 18/23, hard stop at 23. Escape cancels; Return commits.
-- Device rename is queued as a quick op (name-frame only, no blob — per the protocol, ~instant), verified by read-back; the row shows a subtle progress overlay until the `WriteReport` returns, then the cache patches. Failure (`VerifyMismatchError` on the name, or timeout) reverts the row to the old name with an error toast + Retry.
-- Library rename is local and instant; if the entry is in-sync with a device slot, a follow-up inline prompt offers "Also rename on device?" (default: no — the library and device may intentionally diverge; the diff will show `changed`? No — a rename changes name only, not sha, so the diff still reads `inSync` by content; the row's name mismatch is shown as a secondary hint "names differ" without changing sync status). This name-vs-content distinction is stated in the sync detail view.
-- Renames are low-risk but never silent: the toast names both ("Renamed slot 413: 'Bass Prophet' → 'Bass Prophet v2'").
+1. **Queued** — row activity glyph; status bar shows position if behind a long op.
+2. **Writing** — indeterminate ring on the row (~0.5 s; the 7-frame burst is not cancellable — too short, and a mid-burst cancel tears the slot).
+3. **Verifying** — ring continues; label in the Operations popover flips to "verifying".
+4. **Verified** — row flashes a checkmark; toast: **"Sent 'Fat Bass v2' to slot 510 — verified"** with the sha's first 8 chars in the detail line, plus **Undo** when the victim's exact bytes are held locally (§9.6). The cached snapshot patches; the sync row (if any) flips to `in-sync`; slot history gains a "verified write" event.
 
-### 5.8 Backup (`BackupListView`, `BackupProgressSheet`)
+Failure at any phase surfaces per §14 — most importantly the `VerifyMismatchError` moment, which gets its own treatment. There is no silent success and no unverified success.
 
-**Backup list:** newest first; each row: date/time, coverage ("512/512" or "partial · 341/512" with a Resume button), size, source (manual / sync pass), verified badge (BackupSet.load re-hashes on open). Detail view: per-slot table (number, name, sha), Restore… entry point, Export folder (share sheet), Delete (guard: names it; extra warning if it is the *only* complete backup).
+### 8.3 Rename in place
 
-**Start:** toolbar **Back Up Now** (⌘B) anywhere in the Device or Backups sections. Pre-flight line: "Reads all 512 slots, ~3.5 minutes. The device is not modified." (Backup never writes — say so, it removes fear.)
-
-**Progress sheet** (also mirrored in the global status bar so the sheet can be dismissed and the backup keeps running):
-
-- Determinate bar `done/total`, current slot number + name streaming by, elapsed, median-based ETA from `ProgressEvent`, throughput ("398 ms/slot").
-- **Pause** — implemented as cancel; the on-disk partial state *is* the pause state (per-slot persistence). Resumes via `resume=true`, skipping completed slots. Copy: "Paused — 341 of 512 saved. Resume anytime."
-- **Cancel** — same mechanism, framed as stopping: keeps the partial backup, labeled partial in the list.
-- Interruption (app suspended past its background allowance, device unplugged, transport error): identical outcome — a partial, resumable backup plus a banner on return: "Backup interrupted at slot 342 — Resume?" Nothing is ever lost or invalid.
-- While a backup runs, the device queue blocks other device ops (§3); Pause is the escape hatch if the user urgently needs a write.
-
-### 5.9 Restore (`RestorePlanSheet`)
-
-Entered from a backup's detail view ("Restore…"), or per-slot from `SlotDetailView` ("Restore this slot from backup…").
-
-**Scope step:** Full device (all covered slots) / Selected slots (multi-select table) / "Only slots that differ from this backup" (requires a current hashed snapshot; offers to read first).
-
-**Plan step:** every planned write listed with its victim: `"413 ← 'Bass Prophet' (backup) — replaces 'Bass Prophet v2' (on device now)"`. If cached names are older than 10 minutes, a quick names refresh (~2 s) runs automatically before the plan renders, so victims are named from fresh data. Footer: write count, estimate (~1 s/slot verified), backup freshness of *other* backups ("your newest full backup is this one" / "newer backup exists from …"), destructive confirm labeled **"Restore N Slots"**. A full-512 restore adds one final alert: "This overwrites every preset on the device. 512 slots." — Confirm / Cancel.
-
-**Execution:** progress identical to backup's (done/total, current slot, ETA), each write verified. **Stops at the first failure** (core semantics): the sheet then shows completed count, the failing slot and error, and remaining slots, with **Retry from slot N** (restore with the remaining slot list) and Close. A slot torn by a failed write is flagged in the browser (§9) until a successful re-write.
-
-Restores from a backup lacking `meta_hex` for a slot (old phase-0 index): that slot appears in the plan pre-disabled with "no meta recorded — re-backup to restore this slot" (the core's own message).
+- **Enter:** tap the name in a detail view, or Return / context-menu Rename on a row. The label becomes a `TextField` in place.
+- **Validation while typing:** printable ASCII only (illegal characters rejected at input with a brief shake), counter from 18/23, hard stop at 23. Esc cancels, Return commits.
+- **Device rename** is a quick op — the core sends the name frame plus refresh read only (no blob traffic, per the wire protocol). The row shows a subtle progress overlay until the `WriteReport` returns, then the cache patches and a toast confirms: "Renamed slot 413: 'Bass Prophet' → 'Bass Prophet v2'". On failure (timeout or name verify mismatch) the row **reverts to the old name** with an error toast + Retry; the slot is *not* flagged torn (renames carry no blob).
+- **Library rename** is local and instant. If the entry is content-in-sync with a device slot, an inline follow-up offers "Also rename on device?" (default no). The spec's honesty rule: a name difference never changes sync status — the diff is content-based — so the sync row shows a secondary "names differ" hint, explained in `SyncSlotDetailView`.
 
 ---
 
-## 6. Destructive-action guard rails (unified rules)
+## 9. Destructive-action guard rails (one component, one set of rules)
 
-One component (`OverwriteConfirmation`) renders every device-write confirmation, so the rules cannot drift per screen:
+One component renders every device-write confirmation, driven by the existing `OverwritePlan` model, so the rules cannot drift per screen:
 
-1. **Name the victim, always.** Title: `Replace "Perc Organ" in slot 413?` For empty-judged targets: `Send to slot 510? (empty)` with the judgment evidence one tap away. For *unjudged* targets: `Slot 413 — contents unknown` and the dialog offers **Read First** (~1 s) as the primary action, with "Overwrite Anyway" secondary.
-2. **State recoverability.** One of: "The current preset is in your library ('Perc Organ')" / "…is in backup 2026-09-01-1432" / **"…is not in your library or any backup — it will be lost"** (bold path). When unrecoverable, the dialog offers **Save a Copy First** (single read → library, ~1 s) as a one-tap escape.
-3. **Surface backup freshness.** Footer line in every such dialog: "Last full backup: today 14:32 (3 writes since)" or "No complete backup yet — consider backing up first (⌘B)" with a Back Up Now shortcut.
+1. **Preview the victim, always** — name and expendability, before confirming. Title: `Replace "Perc Organ" in slot 413?`. Expendable victim: `Send to slot 510? Currently: empty (identical to 268 other slots)` — the judgment evidence is in the dialog, not behind it. **Unjudged victim:** `Slot 413 — contents unknown`, and the primary action is **Read First** (~1 s, then the dialog re-renders with the real victim); "Overwrite Anyway" is secondary.
+2. **State recoverability.** Exactly one of: "The current preset is in your library ('Perc Organ')" · "…is in backup 2026-09-01 14:32" · **"…is not in your library or any backup — it will be lost."** When unrecoverable, the dialog offers **Save a Copy First** (one read → library) as a one-tap escape.
+3. **Backup freshness footer** in every such dialog: "Last full backup: today 14:32 · 3 writes since" or "No complete backup yet — Back Up Now (~3.5 min)".
 4. **Confirm buttons state the action and count**, never "OK": "Replace Preset", "Write 5 Slots", "Restore 512 Slots".
-5. **Severity scales:** empty-judged target → anchored one-tap popover; single occupied/unjudged target → alert-style dialog; bulk/restore → full plan sheet; full-device restore → plan sheet + final alert.
-6. **Undo where honest.** After any overwrite whose victim's exact bytes exist locally (backup covering the slot with matching sha, or a library blob), a 10 s toast offers **Undo**, and ⌘Z works via `UndoManager` — undo enqueues a verified write of the victim back. When bytes are not held, no undo is offered and none was promised.
-7. **Writes are verified by default and the UI never opts out.** There is no "skip verification" surface in v1; `verify=false` exists in the core for tooling, not for this app.
-8. **Cancellation honesty:** cancelling mid-write tears the slot (core behavior). The Cancel control on single writes is disabled during the ~1 s burst (too short to matter); batch operations cancel *between* slots only. If a tear does occur (transport failure mid-chunk), §9's torn-slot handling engages.
+5. **Severity scales with blast radius:** expendable single target → popover anchored at the row, one tap; occupied or unjudged single target → alert dialog; bulk send / bulk apply / restore → full plan sheet listing every target and victim; full-device restore → plan sheet **plus** a final alert ("This overwrites every preset on the device — 512 slots").
+6. **Undo only where honest.** After an overwrite whose victim's exact bytes are held locally (library blob, or a covering backup with matching sha), a 10 s toast offers **Undo** (and the system undo gesture works, via `UndoStack`); undo enqueues a verified write of the victim back and is itself confirmed by the verified toast. When the bytes are not held, no undo is offered and none was implied.
+7. **No verification opt-out** anywhere in the UI.
+8. **Cancellation honesty:** single writes cannot be cancelled mid-burst; batch operations cancel *between* slots (worst-case latency one ack/dump timeout, per the core). If a transport failure tears a slot mid-write anyway, §14's torn-slot handling engages.
 
 ---
 
-## 7. Keyboard and pointer support
+## 10. Expendable-slot visual language
 
-Full hardware-keyboard operation of the browsing and sending flows.
+Judged state is a semantic role rendered identically everywhere (browser, pickers, plan sheets, sync rows):
 
-| Key | Context | Action |
-|---|---|---|
-| ↑ / ↓ | any list | move selection |
-| ⌥↑ / ⌥↓ | slot list | previous / next bank section |
-| type-ahead | any list | select by name/number prefix |
-| ⏎ | slot / library row | rename inline |
-| Space | slot / library row | toggle detail focus (quick look) |
-| ⌘C / ⌘V | slot & library rows | copy preset / paste (= send, with confirmation) |
-| ⌘F | any list | focus search |
-| ⌘R | device section | refresh names |
-| ⌘B | anywhere | Back Up Now |
-| ⌘Z / ⇧⌘Z | anywhere | undo/redo overwrites (§6.6) |
-| Delete | library row | delete entry (guarded) |
-| ⌘1…⌘4 | anywhere | sidebar sections Device / Library / Sync / Backups |
-| Esc | dialogs, drag, inline rename | cancel |
-| Tab | split view | move focus between columns (`focusSection`) |
-
-Pointer: rows get hover highlight; drag affordances per §5.6; context menus everywhere a swipe action exists (parity rule: every swipe action has a context-menu and keyboard path).
-
----
-
-## 8. Empty / loading / error state catalog
-
-| Screen | Empty | Loading | Error |
+| Judgment | Dot | Row treatment | Copy on inspection |
 |---|---|---|---|
-| Connect | no endpoints → instructions + Demo CTA | endpoint connecting spinner | ports-seen list; retry |
-| Slot browser | n/a (512 rows always) | redacted names streaming (~2 s) | banner + retry; partial names kept |
-| Slot detail | unread blob → "Read Slot" CTA | 400 ms skeleton + queue position | inline retry; torn/verify-failed badges |
-| Library | 3-CTA teaching state | none (local) | corruption badges; index-corrupt full screen |
-| Sync | no snapshot → cost-stating CTA; all-in-sync → success summary | backup progress inline | diff precondition failures (hashless snapshot is impossible by construction — the app only diffs off backups) |
-| Backups | "No backups yet — first one takes ~3.5 min" + CTA | list is local; progress sheet for active | partial rows w/ Resume; `IntegrityError` on open names the bad slot file |
-| Restore plan | backup covers 0 requested slots → explain | quick names refresh before plan | stop-at-first-failure state w/ Retry-from |
-| Status bar | "Idle" | current op + mini progress | last op failed chip → Operations popover |
+| Real preset | filled dot | full-contrast name | — |
+| **Expendable ("empty")** | **outline dot** | **name dimmed + "empty" micro-chip** | "identical to N other slots" / "blank name" |
+| Unjudged | hollow dashed dot | full-contrast name, no chip | "content not read yet — Read Now or run a backup" |
+| Unknown (name read failed) | hollow dot + "!" | "— read failed" placeholder | "name read failed — Retry" |
+
+Rules: dimming is **only** ever applied by content judgment, never by the string "Init"; expendable styling appears only while a hashed snapshot backs it; the slot picker groups expendable slots first and labels the `pickScratchSlot` suggestion; color is never the sole carrier (dot shape + chip text survive grayscale and VoiceOver reads the judgment).
 
 ---
 
-## 9. Error mapping (core → UX)
+## 11. Practice Mode
+
+User-facing name: **Practice Mode** (internal: `DemoDevice` wrapping FreakCore's `SimulatedMicroFreak`; the code name is invisible to users).
+
+- **Entry:** the Connect screen's "Practice Mode" button (always available, no hardware needed), with a profile picker:
+  - `Factory Fresh` (default) — the reference device's shape: real-looking named presets in the low slots plus **269 identical Init blobs**, meta positionally correct, so emptiness judgments, census counts, and the sync diff behave exactly as against Eric's actual synth.
+  - `Lived In` — scattered user presets, few expendables.
+  - `Full` — zero expendables; exercises the "no scratch slot — ask the human" path.
+  - `Flaky` — injected timeouts and a `failChunkAt` torn write; exists so every §14 error surface is reachable without hardware.
+- **The banner (never mistakable for hardware):** whenever the session is simulated, a persistent, non-dismissable banner spans the top of the content column: **"PRACTICE MODE — simulated MicroFreak (Factory Fresh). Nothing here touches hardware."** Distinct tint reserved for practice only (suggested: violet), diagonal-striped leading edge so it survives grayscale. The status-bar connection capsule echoes it ("Practice · Factory Fresh") with the same tint. The banner appears on every device-flavored surface: browser, slot detail, sync, backup progress, restore plans, every overwrite dialog (the dialog footer gains "Practice device — no hardware will change").
+- **Honest pacing by default:** the practice session sleeps ~1 ms/name and ~400 ms/blob so progress bars, ETAs, cancel, and the ~3.5-minute backup are experienced truthfully. Settings toggle "Fast practice timing (20×)" for development; the banner appends "(fast)" when on.
+- Reply-lag stays **on** (the sim default) — practice mode exercises the same defenses as hardware.
+- **Identity separation:** practice snapshots/backups are stamped `practice:<profile>` (§4). Switching practice → hardware keeps the library and backups (device-independent) but drops the slot cache and diff; restoring a `practice:*` backup to hardware (or vice versa) demands the cross-identity warning: "This backup came from a practice device, not your MicroFreak."
+- A hardware MicroFreak appearing while in Practice Mode raises a passive banner ("MicroFreak detected — Switch?"); switching mid-operation is refused until the operation finishes or is cancelled. Never auto-switches.
+
+---
+
+## 12. Connect flow (`ConnectView`, `ConnectSheet`)
+
+Shown as the content column when no session exists and Device is selected; also reachable any time from the status capsule.
+
+- **Layout (landscape, centered column, actions in the lower half per §13):** device glyph · "No MicroFreak connected" · live list of MIDI endpoints (auto-refreshing via CoreMIDI setup notifications from `FreakMIDI`) with a Connect button per plausible endpoint · divider · **Practice Mode** button + profile picker.
+- Endpoint list labels the likely match ("MicroFreak — likely match") using the same hints as the core's discovery; other endpoints are listed but never auto-picked.
+- Hot-plug: a device appearing triggers a passive banner anywhere in the app — "MicroFreak detected — Connect?" Never auto-connects.
+- **States:** *no endpoints* — "Connect the MicroFreak by USB." + Practice Mode; *connecting* — inline spinner on the row, cancellable; *failed* — §14's `DeviceNotFoundError` treatment (lists every port seen, so a cable problem is distinguishable from a wrong-port problem) or `TransportError` (retry + details disclosure).
+
+**Connection state machine** (owned by `AppModel`):
+
+```
+noDevice(seen: [Endpoint]) → connecting(Endpoint) → connected(hardware)
+noDevice → practice(profile)
+any → noDevice        (unplug/transport failure: cache kept, marked stale; running op fails cleanly per §14)
+practice ⇄ hardware   (explicit user action only; refused mid-operation)
+```
+
+Status capsule strings: "MicroFreak · Connected" / "Connecting…" / "No Device" / "Practice · <profile>" (practice tint).
+
+---
+
+## 13. One-handed reachability rules
+
+The user is standing, iPad landscape on a stand, one free hand. Binding rules for every screen:
+
+1. **Primary actions live in the lower half and near the vertical edges** — toolbars that matter (Back Up Now, Apply, Confirm) render as bottom-anchored bars in sheets, never top-center. The status bar (bottom) is the global control surface.
+2. **Confirmations anchor at the point of interaction** (popover at the touched row), so confirm-after-tap requires no reach across the screen. Full plan sheets put Confirm/Cancel bottom-trailing.
+3. **No interaction requires two simultaneous touches.** Drag-and-drop always has a tap-only path of equal capability (§8.1 parity rule). Multi-select uses Edit-mode checkboxes, not held modifiers.
+4. **Targets:** minimum 44 pt; list rows ≥ 52 pt; the browser's per-row primary tap is the whole row.
+5. **Handedness-neutral:** nothing is exclusive to a left- or right-edge gesture; swipe actions exist on both edges (leading: Save to Library; trailing: Send Here… / Rename) and every swipe action is also in the context menu.
+6. **Reachability of the 512-row list:** sidebar bank jumps + section index; flick-scroll never required to reach a bank.
+7. Destructive confirm buttons are **never** placed where the resting thumb falls during scrolling (no full-width bottom-edge destructive buttons without a preceding deliberate tap).
+8. Hardware keyboard is fully supported (arrows, type-ahead select, Return = rename, Space = detail focus, ⌘F search, ⌘R refresh names, ⌘B back up, ⌘Z undo, Esc cancel) but never required.
+
+---
+
+## 14. Error surfaces — every core error, mapped
+
+One mapping table; the UI has no unmapped error path. "Toast" = transient, non-blocking, with an action button. "Alert" = modal. Every failed op also lands in the Operations popover's recent list with full detail.
 
 | Core error | Surface | Behavior |
 |---|---|---|
-| `DeviceNotFoundError` | Connect screen | list every seen port; retry |
-| `TransportError` / unplug mid-op | status bar + banner | op fails cleanly; state → `noDevice`; cache kept, marked stale; resumable ops resumable |
-| `DeviceTimeoutError` | toast on quick ops; op-failure state on long ops | "Device stopped responding (slot N, name read)" + Retry; suggest cable/power after 2nd consecutive |
-| `ReplyMismatchError` | silent single retry, then toast | the lag defense already retried; surfacing means something is really wrong |
-| `VerifyMismatchError` | modal alert | "Write to slot 413 did not verify — the device holds different data than was sent." Details: expected/actual sha, first difference. Actions: Write Again / Leave. Slot badged "verify failed" until a clean verified write |
-| `ChunkNotAckedError` / `WriteAbortedError` | modal alert | slot is **torn**: badge "torn — contents unreliable" in the browser; alert offers Write Again (primary) / Restore from Backup (if covered); badge persists until a verified write succeeds |
-| `OperationCancelledError` | expected path | pause/partial framing (§5.8); on restore, `.completed` renders the done list |
-| `IntegrityError` | per-entry / per-backup badges | names the file; never auto-deletes |
-| `InvalidNameError` | prevented at input | unreachable in practice; if raised, toast with the rule (≤ 23 printable ASCII) |
-| `SlotOutOfRangeError`, `BlobSizeError` | assertion-level | programmer error; generic failure toast + log |
+| `DeviceNotFoundError` | Connect screen inline | Lists every input/output seen (from the error payload) so the user can tell cable vs. wrong-port. Retry. |
+| `TransportUnavailableError` | Connect screen inline | "MIDI is unavailable on this device." (CoreMIDI variant; effectively unreachable on iPad — mapped anyway.) |
+| `TransportError` (incl. unplug mid-op) | Status bar + banner | Op fails cleanly; state → `noDevice`; cache kept and marked stale; a resumable op (backup) shows its Resume affordance on reconnect. Details disclosure shows the chained backend error. |
+| `DeviceTimeoutError` | Toast (quick ops) / op-failure state (long ops) | "Device stopped responding (slot 413, name read)" + Retry. Two consecutive timeouts → suggest checking cable/power. |
+| `ReplyMismatchError` | Toast, after the core's own retries | The lag defense already retried 3×; surfacing means something is genuinely wrong: "Device is answering for the wrong slot — unplug/replug and retry." Retry button. |
+| `ChunkNotAckedError` | Alert + torn-slot flag | "Write to slot 413 failed mid-transfer (chunk 87 unacknowledged). The slot's contents are unreliable." Actions: **Write Again** (primary) · Restore from Backup (when covered) · Close. Row badge "torn" until a verified write succeeds. Slot history logs it. |
+| `WriteAbortedError` | Alert + torn-slot flag (stage `chunk`/`go`/`open`) or plain alert (stage `name_write`/`final_read`, no blob torn) | Same recovery actions; copy names the stage in plain words ("failed before any preset data was sent" vs. "failed during transfer"). |
+| `VerifyMismatchError` | **The designed moment — see below** | |
+| `OperationCancelledError` | Expected path, not an error surface | Backup: "Paused — 341 of 512 saved" partial framing (§16). Restore: the `.completed` reports render as the done-list in the plan sheet. Never a red surface. |
+| `IntegrityError` | Per-entry / per-backup badges | Names the file path and detail; offers Remove / Re-import where §6 applies; the "no meta recorded — re-backup to restore this slot" case renders that exact sentence on the disabled restore row. Never auto-deletes. |
+| `EntryNotFoundError` | Toast | "That preset is no longer in the library." List refreshes. (Race with an external edit; effectively internal.) |
+| `LibraryCorruptError` | Full-screen on library open | Names the index path; offers Move Aside & Start Fresh / Quit. Never silently deletes. |
+| `InvalidNameError` | Prevented at input (§8.3) | If it ever surfaces: toast stating the rule ("names: up to 23 plain ASCII characters"). |
+| `SlotOutOfRangeError`, `BlobSizeError`, `ProtocolError` | Generic failure toast + log | Programmer/foreign-data errors. Blob-size on file import gets a specific line: "Not a MicroFreak preset (expected 4672 bytes, got N)." |
+
+### The `VerifyMismatchError` moment
+
+The one error that means *the synth now holds something other than what we sent*. It must be scary enough to stop the user and calm enough to be acted on. Modal alert-style sheet, anchored to the slot, practice/hardware banner visible:
+
+```
+⚠︎  Slot 413 didn't verify
+
+The preset was sent, but reading the slot back returned different
+data. What is on the MicroFreak in slot 413 right now is NOT
+"Fat Bass v2".
+
+   Sent       Fat Bass v2 · sha 9f3a01b2c4d6 · 4,672 bytes
+   Read back  Fat Bass v2 · sha 77e01ac9d001 · 4,672 bytes
+   First difference at byte 1,024
+
+Your library copy of "Fat Bass v2" is safe. Nothing else was
+written.
+
+   [ Write Again ]        ← primary
+   [ Read Slot 413 ]      ← inspect what is actually there
+   [ Close ]
+```
+
+Rules: the sheet always states the blast radius ("nothing else was written") and the safety of the source; name and sha lines render only the fields that actually differ (from the error payload: expected/actual name, expected/actual sha, `firstDifference`, lengths); a read-back that failed entirely renders "Read back — no response" instead of fake values. **No auto-retry** — retrying a write is a deliberate act. On Close, the slot carries a persistent "verify failed" badge (distinct from "torn") in the browser and detail until a clean verified write lands; the slot history records the failure. During a batch (restore/bulk apply) the batch has already stopped at this failure (core semantics); the sheet gains the batch context line "Restore stopped here — 41 of 96 slots done" and a **Retry From Slot 413** action.
 
 ---
 
-## 10. Connection state machine
+## 15. Slot history (local journal)
 
-```swift
-enum ConnectionState: Equatable, Sendable {
-    case noDevice(seen: [MIDIEndpointInfo])
-    case connecting(endpoint: MIDIEndpointInfo)
-    case connected(DeviceInfo)          // port names; slots=512 assumed, --slots analog in settings
-    case demo(DemoProfile)
-    // error is an event that lands in .noDevice(seen:) with a banner, not a resting state
-}
-```
-
-- Status capsule (sidebar footer + status bar): "MicroFreak · Connected", "Connecting…", "No Device", "Demo Mode · Factory Fresh" (distinct tint; always visible in demo).
-- Transitions only via explicit user action or transport failure. Attach while in demo → banner offering to switch; switching mid-operation is refused until the op finishes or is paused. Detach while connected → §9 transport row. Demo → real keeps the library and backups (they are device-independent); the slot cache and diff are dropped (different device identity — each snapshot/backup records which device identity produced it, `real` vs `demo:<profile>`, and the app never diffs or restores across identities without an explicit warning).
+- **Store:** `history.json` in the app's Documents dir, one journal per device identity (`hardware`, `practice:<profile>`), written by `AppModel` on each event, capped at 50 events/slot (oldest dropped). Not part of FreakCore; purely an app-side observation log.
+- **Events recorded:** snapshot observation (name, sha when read) · verified write (source: library entry / backup slot / device slot copy; name; sha) · rename (old → new) · restore (backup id) · verify failure · torn write · cancelled batch touching the slot.
+- **Rendered** in `SlotDetailView` §7.8. Never rendered as truth about the synth: the header caveat is mandatory copy.
+- History is excluded from cross-identity views (a practice journal never shows under hardware).
 
 ---
 
-## 11. SwiftUI view structure and the view-model layer
+## 16. Backup and restore
 
-### 11.1 View tree
+### 16.1 Backup (`BackupListView`, `BackupProgressSheet`)
+
+- **List:** newest first; each row: date/time · coverage ("512/512" or "partial · 341/512" with **Resume**) · size · source (manual / sync pass) · identity chip when `practice:*`. Detail: per-slot table (number, name, sha), Restore… entry, Export folder (share sheet), Delete (guard names it; extra warning when it is the only complete backup).
+- **Start:** **Back Up Now** in the Device and Backups toolbars. Pre-flight line, always: "Reads all 512 slots, about 3½ minutes. **The device is never modified by a backup.**"
+- **Progress sheet** (dismissable — the operation continues; the status bar mirrors it):
+  - Determinate bar `done/total` · current slot number + name streaming by · elapsed · **ETA from the core's median-based `ProgressEvent.eta`** · throughput ("398 ms/slot", from the running median).
+  - ETA display rules: show "estimating…" until the core supplies a non-nil ETA; render as `m:ss`; update at most once per second; on completion show the `TimingReport` line ("211 s total · median 398 ms/slot").
+  - **Pause** — implemented as cancel; the on-disk partial *is* the pause state (per-slot persistence). Copy: "Paused — 341 of 512 saved. Resume anytime." Resume runs `resume: true`, skipping intact slots.
+  - **Cancel** — same mechanism framed as stopping; keeps the partial, labeled partial in the list.
+  - Interruption (suspension past the background allowance, unplug, transport error) → identical outcome: partial, resumable, plus a banner on return: "Backup interrupted at slot 342 — Resume?" Nothing is ever lost or invalid.
+- A running backup blocks other device ops (§1.3); Pause is the escape hatch when the user urgently needs a write.
+
+### 16.2 Restore (`RestorePlanSheet`)
+
+Entered from a backup's detail ("Restore…") or per-slot from `SlotDetailView`.
+
+- **Scope step:** Full device · Selected slots (multi-select table) · "Only slots that differ from this backup" (needs a current hashed snapshot; offers to read first).
+- **Plan step:** every planned write lists its victim per §9: `413 ← "Bass Prophet" (backup) — replaces "Bass Prophet v2" (on device, not expendable, in library)`. If cached names are older than 10 minutes, an automatic ~2 s names refresh runs before the plan renders so victims are named from fresh data. Footer: write count · estimate (~1 s/slot verified, median-based once running) · backup-freshness line · confirm button **"Restore N Slots"**; full-512 adds the final alert (§9.5). Slots the backup cannot faithfully restore (missing `meta_hex`) appear pre-disabled with the core's own sentence: "no meta recorded — re-backup to restore this slot."
+- **Execution:** progress identical to backup (done/total, current slot, median ETA, cancel-between-slots). **Stops at the first failure** (core semantics): the sheet then shows the completed list (from `.completed` on the error), the failing slot with its §14 surface, and the remaining slots, with **Retry From Slot N** and Close. A torn slot is badged until re-written.
+
+---
+
+## 17. Sync view (`SyncListView`, `SyncSlotDetailView`)
+
+Device vs. library, one row per slot, straight from the core's `SyncDiff` — the diff computes; **only explicit user actions write**.
+
+**Precondition banner (the honest gate):** the diff needs a fully hashed snapshot. Header always shows provenance: "Compared against device read 12 min ago (backup 2026-09-01 14:32) · 3 writes since." With no hashed snapshot, the list is replaced by the CTA state: "To compare, the app reads every slot (~3½ minutes) and keeps it as a backup." → **Read Device & Compare**. Because verified writes patch the snapshot (§4), applying rows does not invalidate the diff.
+
+**Filter bar with live counts**, each status toggleable; default shows everything except `in-sync` and `empty`:
 
 ```
-MicroFreakLibrarianApp
+Added 12 · Changed 3 · Missing 5 · In sync 223 · Empty 269
+```
+
+**Rows and per-status actions** (statuses map 1:1 to core `SlotStatus`):
+
+| Status (core) | Row reads | Explicit action(s) | Guard |
+|---|---|---|---|
+| `added` (DEVICE_ONLY) | `[097] device "Weird Organ" · not in library` | **Import to Library** (instant — bytes already on disk from the snapshot-backup) | none — additive |
+| `changed` (DIFFERS) | `[413] device "Bass Prophet" ≠ library "Bass Prophet v2"` | **Push Library → Device** (verified write) / **Pull Device → Library** (instant; new entry takes the slot claim; old entry kept, claim cleared — stated) | push: full §9 dialog naming the device preset |
+| `missing` (LIBRARY_ONLY) | `[510] library "Fat Bass" · device slot empty` | **Send to Device** (verified write) | §9 popover — victim is expendable, evidence shown |
+| `in-sync` | informational | none | — |
+| `empty` | informational; row explains the judgment ("identical to 268 other slots") | none by default | — |
+
+**Bulk apply:** toolbar **Apply…** opens `BulkApplyPlanSheet`: sections "Import 12 to library" (pre-checked), "Send 5 to device" (pre-checked, each row shows its victim + expendability), "Conflicts (3)" — **conflicts are never pre-resolved**: each `changed` row requires an explicit Push / Pull / Skip choice, default Skip. Footer: totals · time estimate ("5 writes ≈ 5 s") · backup-freshness line · confirm labeled **"Write 5 Slots to Device"**. Execution is one queued op with per-row ticks; a failed write stops the batch (core restore semantics), marks completed rows, offers Retry Remaining.
+
+**`SyncSlotDetailView`:** both sides' names and shas, judgment evidence, name-vs-content note ("names differ; contents identical" for renamed in-sync rows), slot history excerpt, and the same explicit actions with full context.
+
+**States:** no snapshot → CTA above · everything in sync → "Device and library match — 223 in sync, 269 empty" + timestamp · compare running → the backup's progress inline (same op) · stale → header ages, warning tone past 24 h with Re-read · no library → routes to the library empty state.
+
+---
+
+## 18. App structure
+
+### 18.1 View inventory
+
+```
+FreakLibrarianApp (App/Sources/MicroFreakLibrarianApp.swift)
 └─ WindowGroup
-   └─ RootView                                  // owns AppModel via @State, injects via .environment
+   └─ RootView                          owns AppModel (@State), injects via .environment
       ├─ NavigationSplitView
-      │  ├─ SidebarView                          // SidebarSelection (device(bank?), library(tag?), sync, backups)
-      │  ├─ ContentColumn                        // switch on selection
-      │  │   ├─ SlotListView        → SlotRowView, BankSectionHeader
-      │  │   ├─ LibraryListView     → LibraryRowView
-      │  │   ├─ SyncListView        → SyncRowView, SyncFilterBar, SyncProvenanceHeader
-      │  │   ├─ BackupListView      → BackupRowView
-      │  │   └─ ConnectView                      // when .noDevice and device section selected
-      │  └─ DetailColumn
-      │      ├─ SlotDetailView
+      │  ├─ SidebarView                 SidebarSelection: device(bank?) | library(tag?) | sync | backups
+      │  ├─ Content column (switch on selection)
+      │  │   ├─ SlotListView           → SlotRowView, BankSectionHeader
+      │  │   ├─ LibraryListView        → LibraryRowView
+      │  │   ├─ SyncListView           → SyncRowView, SyncFilterBar, SyncProvenanceHeader
+      │  │   ├─ BackupListView         → BackupRowView
+      │  │   └─ ConnectView
+      │  └─ Detail column
+      │      ├─ SlotDetailView         → SlotHistoryList, CategoryByteRow, ShaRow
       │      ├─ LibraryEntryDetailView
       │      ├─ SyncSlotDetailView
       │      └─ BackupDetailView
-      ├─ .safeAreaInset(bottom): StatusBarView   // ConnectionCapsule + ActiveOperationView → OperationsPopover
+      ├─ PracticeBanner                 (overlay, top of content, §11)
+      ├─ .safeAreaInset(bottom): StatusBarView → ConnectionCapsule, ActiveOperationView, OperationsPopover
       ├─ .sheet: BackupProgressSheet | RestorePlanSheet | BulkApplyPlanSheet | SendPlanSheet | ConnectSheet
-      ├─ .alert: OverwriteConfirmation (single-target form) | error alerts (§9)
-      └─ .onDrop / .draggable wiring via PresetTransfer (Transferable)
+      ├─ .alert / .popover: OverwriteConfirmation (from OverwritePlan) | VerifyMismatchSheet | error alerts
+      └─ drag/drop wiring via PresetTransfer (Transferable)
 ```
 
-### 11.2 The protocol seam (what FreakCore must eventually provide)
+### 18.2 View-model responsibilities (`@MainActor @Observable`; views bind to these, never to FreakCore directly)
 
-The UI target defines these protocols and value types itself; FreakCore later conforms. `DemoDeviceSession` (the Swift port of `SimulatedMicroFreak`) conforms first, which is what makes the app buildable before the core exists.
+| Model (existing file under `App/Sources/`) | Owns | Never does |
+|---|---|---|
+| `AppModel` (+ `AppModelSync`, `AppModelBackup`, `AppModelWrites` extensions) | connection state machine; the single **device-operation queue** (quick FIFO behind exclusive long ops, cancel current, recent-ops list); device identity; slot-history journal; wiring child models | UI layout decisions; direct frame access |
+| `SlotBrowserModel` | the 512-row cache (name load-state, sha, judgment, sync badge, flags `torn`/`verifyFailed`/`busy`); names-as-of; search text; refreshNames / readSlot / rename / saveToLibrary intents; snapshot apply + per-write patch | writing without an `OverwritePlan` confirmation (`confirm(plan)` is the only path to the wire) |
+| `LibraryModel` | entries cache mirroring the `Library` actor; tag list; import/export intents; delete/assign-slot guards' facts | touching the device |
+| `SyncModel` | diff state machine: `needsSnapshot(estimate)` → `comparing(ProgressEvent)` → `ready(SyncDiff, provenance)` / `failed`; filter set; per-row and bulk apply **plan builders** (returning `OverwritePlan` / `BulkApplyPlan`) | executing a plan itself — execution goes through `AppModel`'s queue after confirmation |
+| `BackupsModel` | backup catalog; active backup progress; resumable detection; restore plan builder (with the automatic names refresh); delete guard facts | writing to the device outside a confirmed restore plan |
+| `FreshnessModel` | `latestCompleteBackup`, `writesSinceBackup`, `namesAsOf` — the single source for every freshness line | — |
+| `ToastCenter` | transient toasts incl. undo-carrying ones | modal decisions |
+| `OverwritePlan` / `UndoStack` / `PresetTransfer` (value types) | one plan schema for singles, bulks, restores (items = target + incoming name + victim{name, expendable-with-evidence, recoverability} + severity + freshness snapshot); honest undo eligibility; drag payloads | — |
 
-```swift
-// MARK: Value types — direct transliterations of microfreak.model (all Sendable, Equatable)
+**Threading contract:** view models are the only writers of their own state; all device work is enqueued on `AppModel`'s queue, which hops to the FreakCore device actor and re-dispatches `ProgressEvent`s to `@MainActor` (the existing `ProgressBridge`); cancellation maps UI Cancel onto the core's `CancelToken` (long ops poll between slots/chunks; worst-case latency one timeout). Library/backup change streams drive invalidation.
 
-struct Preset      { let name: String; let blob: Data /*4672*/; let meta: Data /*9*/
-                     var sha256: String; func renamed(_ n: String) -> Preset }
-struct SlotRecord  { let slot: SlotID; let name: String?; let sha256: String?
-                     let metaHex: String?; let blob: Data? }
-struct DeviceSnapshot { let takenAt: Date; let records: [SlotRecord]
-                        let deviceIdentity: DeviceIdentity  // real | demo(profile)
-                        func record(_ s: SlotID) -> SlotRecord?; var hasHashes: Bool }
-struct WriteReport { let slot: SlotID; let sha256: String  // "" for rename
-                     let name: String; let verified: Bool? // true or nil; false never occurs
-                     let duration: TimeInterval }
-struct ProgressEvent { let done: Int; let total: Int; let slot: SlotID
-                       let name: String?; let elapsed: TimeInterval; let eta: TimeInterval? }
-typealias ProgressHandler = @Sendable (ProgressEvent) -> Void
+### 18.3 What state lives where
 
-enum SlotStatus: String { case empty, added /*deviceOnly*/, inSync, missing /*libraryOnly*/, changed /*differs*/ }
-struct SlotDiffRow { let slot: SlotID; let status: SlotStatus
-                     let device: SlotRecord?; let library: LibraryEntry? }
-struct SyncDiff    { let rows: [SlotDiffRow]; func rows(_ s: SlotStatus) -> [SlotDiffRow] }
-
-struct LibraryEntry { let id: String; let name: String; let sha256: String; let metaHex: String?
-                      let slot: SlotID?; let addedAt: Date; let tags: [String] }
-
-enum FreakError: Error {  // mirrors the core hierarchy; carries the payloads §9 needs
-    case deviceNotFound(inputs: [String], outputs: [String])
-    case transport(underlying: Error), timeout(stage: String, slot: SlotID?)
-    case replyMismatch(requested: SlotID, replied: SlotID, attempts: Int)
-    case chunkNotAcked(slot: SlotID, chunkIndex: Int)
-    case writeAborted(stage: String, slot: SlotID, chunksSent: Int)
-    case verifyMismatch(slot: SlotID, expectedSHA: String, actualSHA: String,
-                        expectedName: String, actualName: String, firstDifference: Int?)
-    case cancelled(done: Int, total: Int, completed: [WriteReport])
-    case integrity(path: String, detail: String)
-    case invalidName(String), entryNotFound(String), libraryCorrupt(path: String, detail: String)
-}
-
-// MARK: Device session — one per open transport; the actor serializes (the core's lock)
-
-protocol DeviceSession: Actor {
-    nonisolated var identity: DeviceIdentity { get }
-    func name(of slot: SlotID) async throws -> String                       // ~1 ms
-    func read(_ slot: SlotID) async throws -> Preset                        // ~400 ms
-    func snapshot(readBlobs: Bool, keepBlobs: Bool, slots: [SlotID]?,
-                  progress: ProgressHandler?) async throws -> DeviceSnapshot
-    func write(_ preset: Preset, to slot: SlotID) async throws -> WriteReport   // verified, always
-    func rename(_ slot: SlotID, to name: String) async throws -> WriteReport   // name frame only
-    func backup(to dir: URL, slots: [SlotID]?, resume: Bool,
-                progress: ProgressHandler?) async throws -> BackupSetHandle    // reads only
-    func restore(from backup: BackupSetHandle, slots: [SlotID]?,
-                 progress: ProgressHandler?) async throws -> [WriteReport]     // stops at first failure
-    func close() async
-}
-// Cancellation contract: all long methods poll Task.isCancelled between slots
-// (mapped onto the core's CancelToken) and throw FreakError.cancelled.
-
-// MARK: Discovery / connection
-
-protocol DeviceConnecting: Sendable {
-    var endpointEvents: AsyncStream<[MIDIEndpointInfo]> { get }   // fires on attach/detach
-    func connect(to endpoint: MIDIEndpointInfo?) async throws -> any DeviceSession // nil = discover
-    func makeDemo(_ profile: DemoProfile) -> any DeviceSession
-}
-
-// MARK: Library (local; usable with no device)
-
-protocol LibraryStoring: Actor {
-    func entries() throws -> [LibraryEntry]
-    func preset(for id: String) throws -> Preset                  // re-hashed; .integrity on rot
-    func add(_ p: Preset, slot: SlotID?, tags: [String]) throws -> LibraryEntry
-    func renameEntry(_ id: String, to name: String) throws -> LibraryEntry
-    func assignSlot(_ id: String, slot: SlotID?) throws           // clears any other claim
-    func setTags(_ id: String, tags: [String]) throws
-    func remove(_ id: String) throws
-    func slotMap() throws -> [SlotID: LibraryEntry]
-    func importSnapshot(_ s: DeviceSnapshot, skipExpendable: Bool) throws -> [LibraryEntry]
-    nonisolated var changes: AsyncStream<Void> { get }
-}
-
-// MARK: Backups on disk
-
-protocol BackupCataloging: Actor {
-    func list() throws -> [BackupSummary]        // createdAt, coveredSlots, isComplete, identity, path
-    func open(_ id: BackupID) throws -> BackupSetHandle   // load() re-hashes; throws .integrity
-    func delete(_ id: BackupID) throws
-    nonisolated var changes: AsyncStream<Void> { get }
-}
-protocol BackupSetHandle: Sendable {
-    var summary: BackupSummary { get }
-    func covers(_ slot: SlotID) -> Bool
-    func records() -> [SlotRecord]               // names+shas+meta; blobs lazy
-    func preset(_ slot: SlotID) throws -> Preset // throws .integrity when metaHex absent
-}
-
-// MARK: Pure functions (no protocol needed — free functions the UI can stub trivially)
-
-func syncDiff(snapshot: DeviceSnapshot, entries: [LibraryEntry], threshold: Int = 3) -> SyncDiff
-func expendableSlots(in records: [SlotRecord], threshold: Int = 3) -> Set<SlotID>
-func pickScratchSlot(in records: [SlotRecord], preferFrom: SlotID, excluding: Set<SlotID>) -> SlotID?
-func shaCensus(_ records: [SlotRecord]) -> [String: Int]
-func validateName(_ s: String) -> Result<String, FreakError>   // ≤23 printable ASCII
-```
-
-### 11.3 View models (`@MainActor @Observable`; views bind to these, never to the seam directly)
-
-```swift
-@MainActor @Observable final class AppModel {
-    var connection: ConnectionState
-    let operations: DeviceOperationQueue
-    let slots: SlotBrowserModel
-    let library: LibraryModel
-    let sync: SyncModel
-    let backups: BackupsModel
-    let freshness: FreshnessModel        // latestCompleteBackup, writesSinceBackup, namesAsOf
-    // intents
-    func connect(_ endpoint: MIDIEndpointInfo?) ; func startDemo(_ p: DemoProfile) ; func disconnect()
-}
-
-@MainActor @Observable final class DeviceOperationQueue {
-    enum Kind { case quick, exclusiveLong }              // long ops block; quick ops FIFO behind them
-    struct Running { let title: String; let progress: ProgressEvent?; let cancellable: Bool }
-    var current: Running?
-    var pending: [PendingDescriptor]
-    var recent: [CompletedDescriptor]                    // feeds the Operations popover
-    @discardableResult
-    func enqueue<T>(_ title: String, kind: Kind,
-                    _ body: @escaping (any DeviceSession) async throws -> T) -> Task<T, Error>
-    func cancelCurrent()
-}
-
-@MainActor @Observable final class SlotBrowserModel {
-    struct Row { let id: SlotID; var name: LoadState<String>   // .loading/.loaded/.failed
-                 var sha: String?; var judgment: Judgment      // .unjudged/.empty(evidence)/.occupied
-                 var syncStatus: SlotStatus?; var flags: Set<SlotFlag> } // .torn, .verifyFailed, .busy
-    var rows: [Row]; var namesAsOf: Date?; var searchText: String
-    func refreshNames() ; func readSlot(_ id: SlotID)
-    func rename(_ id: SlotID, to: String)
-    func saveToLibrary(_ ids: [SlotID], tags: [String])
-    func send(_ transfer: PresetTransfer, to: SlotID) -> OverwritePlan   // plan feeds the confirmation UI
-    func confirm(_ plan: OverwritePlan)                                  // the only path to the wire
-    func applySnapshot(_ s: DeviceSnapshot) ; func patch(with report: WriteReport)
-}
-
-@MainActor @Observable final class SyncModel {
-    enum State { case needsSnapshot(estimate: TimeInterval)
-                 case comparing(ProgressEvent)                            // the backup pass
-                 case ready(SyncDiff, provenance: SnapshotProvenance)
-                 case failed(FreakError) }
-    var state: State ; var filter: Set<SlotStatus>
-    func readDeviceAndCompare()                                           // backup → diff
-    func apply(_ row: SlotDiffRow, direction: ApplyDirection) -> OverwritePlan?  // nil = local-only (import/pull)
-    func bulkPlan(selections: [SlotDiffRow: ApplyDirection]) -> BulkApplyPlan
-    func execute(_ plan: BulkApplyPlan)
-}
-
-@MainActor @Observable final class BackupsModel {
-    var items: [BackupSummary] ; var active: ProgressEvent? ; var resumable: BackupSummary?
-    func backUpNow() ; func pause() ; func resume(_ id: BackupID)
-    func restorePlan(from: BackupID, scope: RestoreScope) async -> RestorePlan   // names victims (quick refresh)
-    func executeRestore(_ plan: RestorePlan)
-    func delete(_ id: BackupID)
-}
-
-struct OverwritePlan {         // one struct powers §6 for singles, bulks, and restores
-    struct Item { let target: SlotID; let incomingName: String
-                  let victim: Victim   // .empty(evidence) | .named(String, recoverable: Recoverability) | .unknown
-                }
-    let items: [Item]; let estimatedDuration: TimeInterval
-    let backupFreshness: FreshnessSnapshot
-    var severity: Severity     // .popover / .dialog / .planSheet / .planSheetPlusFinalAlert
-}
-```
-
-Threading contract: VMs hop to the `DeviceSession` actor via `DeviceOperationQueue.enqueue` only; `ProgressHandler` events are re-dispatched to `@MainActor` by the queue; VMs are the only writers of their own state. Library/backup `changes` streams drive invalidation.
+| State | Home | Persistence |
+|---|---|---|
+| Device truth | the synth (or `SimulatedMicroFreak`) | — (the app only ever holds observations) |
+| Slot cache (names, shas, judgments, flags) | `SlotBrowserModel` in memory | dropped on identity switch; rebuilt from names pass; hashed tier restored from the latest backup's records at launch (marked with its age) |
+| Library | FreakCore `Library` folder | `Documents/library/` (index.json + content-addressed blobs; atomic index writes) |
+| Backups | FreakCore `BackupSet` folders | `Documents/backups/<timestamp>/` (phase-0 format, per-slot persistence, resumable) |
+| Sync diff | `SyncModel`, recomputed from snapshot + library | never persisted (cheap and pure; provenance is what matters) |
+| Slot history | `AppModel` journal | `Documents/history.json`, per identity, capped |
+| Freshness counters | `FreshnessModel` | `UserDefaults` |
+| Navigation selection, filters, practice profile, fast-timing toggle | `AppModel` / views | `SceneStorage` / `AppStorage` |
+| In-flight operation | `AppModel` queue only | never persisted; interruption resolves to the resumable on-disk state (backups) or a clean failure (writes) |
 
 ---
 
-## 12. Demo mode specifics
+## 19. Accessibility baseline
 
-- `DemoDeviceSession` wraps the Swift port of `SimulatedMicroFreak` (`reply_lag` on, per the porting checklist) behind the same `DeviceSession` protocol.
-- **Profiles:** `factoryFresh` (named low slots + 269 identical Inits — the reference device's shape, so emptiness judgments are real), `livedIn` (scattered user presets, few expendables), `full` (zero expendables — exercises the "no scratch slot, ask the human" path), `flaky` (injected timeouts, a `failChunkAt` torn write — for building §9's error states without hardware).
-- **Honest pacing by default:** the demo session sleeps ~1 ms/name and ~400 ms/blob so progress bars, ETAs, pause/resume, and the 3.5-minute backup are experienced truthfully. A Settings toggle "Fast demo timing (20×)" exists for development.
-- Demo snapshots/backups are stamped `demo:<profile>` and never diffed or restored against a real device without an explicit cross-identity warning (§10).
-- Every screen, flow, dialog, drag, and error state in this spec must be reachable in demo mode; that is the UI's definition of done before hardware testing.
-
----
-
-## 13. Open questions (flagged, not blocking)
-
-1. **Background execution:** a 3.5-minute backup exceeds iPadOS's default background allowance; v1 accepts pause-on-suspend (resume is cheap and designed-for). Investigate audio-session or extended-execution entitlements later.
-2. **Rename verify blind spot:** the protocol notes back-to-back same-slot reads can't distinguish a lagged reply (write-protocol.md, "Quirks"). The UI treats a verified rename as verified; if hardware sessions show phantom verifies, add a delayed re-read.
-3. **Slot 384 boundary and per-chunk pacing** are core-level open assumptions (core-api §5); no UI impact beyond trusting `WriteReport`.
-4. **Multiple libraries / iCloud sync of the library folder** — out of scope for v1; the `LibraryStoring` seam doesn't preclude it.
+- Dynamic Type through XL on all rows (rows grow; the slot number column stays fixed-width numeric).
+- VoiceOver: rows read "slot 413, Bass Prophet, in sync" / "slot 510, empty — identical to 268 other slots"; judgment and badges are traits, not color; drag flows have the tap-parity path (§13.3) so every action is rotor-reachable.
+- All state colors pass contrast in light and dark; practice tint + stripe survives grayscale (§11).
+- Reduced Motion: shimmer and row flashes become opacity fades.
 
 ---
 
-**Summary of key decisions:** The app is built names-first around the protocol's cost asymmetry — the 512-slot browser is live in ~2 seconds while every blob-scale operation is an explicit, resumable, progress-barred queue item, and the one "read everything" operation is always persisted as a backup, so sync freshness and backup freshness are the same thing. All device traffic flows through a single serialized `DeviceOperationQueue` against a `DeviceSession` actor protocol, with verified writes patching the cached snapshot in place, and a `DemoDeviceSession` (simulated device, reply-lag on, honest pacing) conforming first so the entire UI — including every error and torn-write state — is buildable and demoable before FreakCore exists. Destructive safety is centralized in one `OverwritePlan`/confirmation component enforcing invariant rules: every overwrite names its victim and its recoverability, backup freshness appears in every destructive dialog, drops and pastes are intent rather than consent, and undo is offered exactly when the victim's bytes are actually held.
+## 20. Open questions (flagged, not blocking v1)
+
+1. **Background execution:** a ~3.5-minute backup exceeds the default background allowance; v1 accepts pause-on-suspend (resume is designed-for and cheap). Extended-execution entitlements can be investigated later.
+2. **Rename verify blind spot:** back-to-back same-slot reads cannot distinguish a lagged reply (write-protocol.md, Quirks). The UI treats a verified rename as verified; if hardware sessions show phantom verifies, add a delayed re-read.
+3. **Category-byte label mapping** ships empty until verified against hardware (§7.4); the raw-hex display is the honest default.
+4. **Per-chunk ack pacing and sub-384 writes** are core-level open assumptions (core-api §5 of "Porting the core"); no UI impact beyond trusting `WriteReport`.
+5. **App identity mismatch** in `project.yml` (§ header) needs the rename pass to `com.ericbrookfield.freaklibrarian` / "Freak Librarian".

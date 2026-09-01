@@ -1,5 +1,6 @@
 // Library.swift — a local folder of content-addressed preset blobs +
-// index.json (library.py).
+// index.json (port of library.py). An actor: single-writer semantics with
+// data-race freedom under Swift 6.
 //
 //     <root>/
 //       index.json                 {"schema": 1, "entries": [entry...]}
@@ -8,19 +9,22 @@
 //
 // Index writes are atomic (temp file + rename). Single-writer assumption;
 // no cross-process locking. Every get() re-hashes the blob file against its
-// filename (.integrity on rot).
+// filename (.integrity on rot). Interop encodings pinned by §10: entry ids
+// are uuid4 hex — lowercase, 32 chars, NO hyphens; timestamps are
+// "yyyy-MM-dd'T'HH:mm:ss" local; `slot: null` is written explicitly for an
+// unassigned entry.
 
 import Foundation
 
 private let librarySchema = 1
 
 public struct LibraryEntry: Sendable, Equatable, Identifiable {
-    public let id: String              // uuid4 hex (lowercase, no dashes), minted at add()
+    public let id: String            // uuid4 hex; minted at add(); survives renames
     public let name: String
     public let sha256: String
-    public let metaHex: String         // 18 hex chars, round-trips Preset.meta
-    public let slot: Int?              // desired device slot; at most one entry per slot
-    public let addedAt: String         // ISO 8601
+    public let metaHex: String       // 18 hex chars, round-trips Preset.meta
+    public let slot: Int?            // desired device slot; at most one entry per slot
+    public let addedAt: String
     public let tags: [String]
 
     public init(id: String, name: String, sha256: String, metaHex: String,
@@ -41,14 +45,11 @@ public struct LibraryEntry: Sendable, Equatable, Identifiable {
     }
 }
 
-/// Deliberately NOT Sendable — single-writer, owned by one isolation domain
-/// (the app uses MainActor); never crosses into MicroFreakDevice.
-public final class Library {
-    public let root: URL
+public actor Library {
+    public nonisolated let root: URL
     private var entriesList: [LibraryEntry]
 
-    /// Mirrors the Python constructor; internal — production code goes
-    /// through create/open.
+    /// Internal designated init — production code goes through create/open.
     init(root: URL, entries: [LibraryEntry]) {
         self.root = root
         self.entriesList = entries
@@ -56,26 +57,29 @@ public final class Library {
 
     // ------------------------------------------------------------ open/create
 
-    /// Create a NEW library. Refuses (.libraryExists) if root already holds
-    /// an index.json — creating over an existing library would wipe its
-    /// entry list and orphan its blobs.
+    /// Create a NEW library. Throws .libraryExists if root already holds an
+    /// index.json (creating over an existing library would orphan its blobs).
     @discardableResult
     public static func create(at root: URL) throws -> Library {
         let indexPath = root.appendingPathComponent("index.json")
         if FileManager.default.fileExists(atPath: indexPath.path) {
             throw FreakError.libraryExists(path: indexPath.path)
         }
-        try FileManager.default.createDirectory(
-            at: root.appendingPathComponent("blobs"),
-            withIntermediateDirectories: true)
-        let lib = Library(root: root, entries: [])
-        try lib.save()
-        return lib
+        do {
+            try FileManager.default.createDirectory(
+                at: root.appendingPathComponent("blobs"),
+                withIntermediateDirectories: true)
+        } catch {
+            throw FreakError.integrity(path: root.path,
+                                       detail: "cannot create library: \(error)")
+        }
+        try saveIndex(root: root, entries: [])
+        return Library(root: root, entries: [])
     }
 
-    /// Open an existing library. A missing index.json throws
-    /// .libraryNotFound (there is no library here — create one); an
-    /// unreadable or malformed one throws .libraryCorrupt.
+    /// Open an existing one. Missing index.json -> .libraryNotFound
+    /// (open-or-create idiom: catch it and call create). Unreadable /
+    /// malformed / unsupported-schema -> .libraryCorrupt.
     public static func open(at root: URL) throws -> Library {
         let indexPath = root.appendingPathComponent("index.json")
         guard FileManager.default.fileExists(atPath: indexPath.path) else {
@@ -115,22 +119,26 @@ public final class Library {
         return Library(root: root, entries: entries)
     }
 
-    private func save() throws {
+    private static func saveIndex(root: URL, entries: [LibraryEntry]) throws {
         let payload: [String: Any] = [
             "schema": librarySchema,
-            "entries": entriesList.map { e -> [String: Any] in
+            "entries": entries.map { e -> [String: Any] in
                 ["id": e.id, "name": e.name, "sha256": e.sha256,
                  "meta_hex": e.metaHex,
-                 "slot": e.slot.map { $0 as Any } ?? NSNull(),
+                 "slot": e.slot.map { $0 as Any } ?? NSNull(),  // null written explicitly
                  "added_at": e.addedAt,
                  "tags": e.tags]
             },
         ]
-        try atomicWriteText(jsonText(payload),
-                            to: root.appendingPathComponent("index.json"))
+        try AtomicFile.write(try jsonData(payload),
+                             to: root.appendingPathComponent("index.json"))
     }
 
-    private func blobPath(_ sha256: String) -> URL {
+    private func save() throws {
+        try Self.saveIndex(root: root, entries: entriesList)
+    }
+
+    private nonisolated func blobPath(_ sha256: String) -> URL {
         root.appendingPathComponent("blobs").appendingPathComponent("\(sha256).bin")
     }
 
@@ -147,14 +155,15 @@ public final class Library {
         return e
     }
 
-    /// Re-hashes the blob against its filename on every get.
+    /// Re-hashes the blob file against its filename on EVERY get; .integrity
+    /// on rot or a missing blob file.
     public func get(id: String) throws -> Preset {
         let e = try entry(id: id)
         let path = blobPath(e.sha256)
         guard let blob = try? Data(contentsOf: path) else {
             throw FreakError.integrity(path: path.path, detail: "blob file missing")
         }
-        if FreakProtocol.digest(blob) != e.sha256 {
+        if Wire.digest(blob) != e.sha256 {
             throw FreakError.integrity(path: path.path,
                                        detail: "sha256 mismatch (bit rot?)")
         }
@@ -184,25 +193,32 @@ public final class Library {
     }
 
     // --------------------------------------------------------------- writes
-    // (every mutation ends in an atomic index save)
+    // (the index is rewritten atomically after each)
 
-    /// Blob written iff absent; always a new entry (two entries may share
-    /// one blob sha under different names).
+    /// Blob file written iff absent; ALWAYS a new entry (two entries may
+    /// share one blob sha under different names). Assigning a slot clears
+    /// any other entry's claim first.
     @discardableResult
     public func add(_ preset: Preset, slot: Int? = nil,
                     tags: [String] = []) throws -> LibraryEntry {
-        if let slot, !(0..<FreakProtocol.slots).contains(slot) {
+        if let slot, !(0..<Wire.slots).contains(slot) {
             throw FreakError.slotOutOfRange(slot: slot)
         }
         let sha = preset.sha256
         let path = blobPath(sha)
         if !FileManager.default.fileExists(atPath: path.path) {
-            try FileManager.default.createDirectory(
-                at: path.deletingLastPathComponent(),
-                withIntermediateDirectories: true)
-            try preset.blob.write(to: path)
+            do {
+                try FileManager.default.createDirectory(
+                    at: path.deletingLastPathComponent(),
+                    withIntermediateDirectories: true)
+                try preset.blob.write(to: path)
+            } catch {
+                throw FreakError.integrity(path: path.path,
+                                           detail: "cannot write blob: \(error)")
+            }
         }
         let entry = LibraryEntry(
+            // uuid4 hex, lowercase, 32 chars, NO hyphens (Python uuid4().hex)
             id: UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased(),
             name: preset.name, sha256: sha, metaHex: preset.meta.hexString,
             slot: slot, addedAt: isoNow(), tags: tags)
@@ -214,9 +230,10 @@ public final class Library {
         return entry
     }
 
+    /// Validates the name.
     @discardableResult
-    public func renameEntry(id: String, name: String) throws -> LibraryEntry {
-        try FreakProtocol.validateName(name)
+    public func renameEntry(id: String, to name: String) throws -> LibraryEntry {
+        try Wire.validateName(name)
         let e = try entry(id: id)
         let new = e.with(name: name)
         entriesList[entriesList.firstIndex(of: e)!] = new
@@ -224,7 +241,7 @@ public final class Library {
         return new
     }
 
-    /// Delete the entry; the blob file is deleted only when no remaining
+    /// Deletes the entry; the blob file is deleted only when no remaining
     /// entry references it.
     public func remove(id: String) throws {
         let e = try entry(id: id)
@@ -239,7 +256,7 @@ public final class Library {
     public func assignSlot(id: String, slot: Int?) throws {
         var e = try entry(id: id)
         if let slot {
-            guard (0..<FreakProtocol.slots).contains(slot) else {
+            guard (0..<Wire.slots).contains(slot) else {
                 throw FreakError.slotOutOfRange(slot: slot)
             }
             clearSlotClaims(slot)
@@ -257,15 +274,16 @@ public final class Library {
 
     // --------------------------------------------------------------- import
 
-    /// Import a snapshot's presets. Requires records with blobs
-    /// (snapshot(readBlobs: true, keepBlobs: true)). Each imported entry is
-    /// assigned the slot it came from. Skips expendable slots when asked;
-    /// skips records for which an entry with identical (sha256, name)
-    /// already exists; returns the entries actually added.
+    /// Bulk-import a device snapshot. Requires kept blobs (else
+    /// .snapshotMissingBlobs — snapshot(readBlobs: true, keepBlobs: true)).
+    /// Skips: expendable slots (when skipExpendable), records with meta ==
+    /// nil (name read failed — cannot round-trip), and records whose
+    /// (sha256, name) pair already exists (name nil -> ""). Each imported
+    /// entry is assigned its source slot. Returns entries actually added.
     @discardableResult
     public func importSnapshot(_ snapshot: DeviceSnapshot,
                                skipExpendable: Bool = true,
-                               threshold: Int = FreakProtocol.duplicateThreshold)
+                               threshold: Int = Wire.duplicateThreshold)
                                throws -> [LibraryEntry] {
         let records = snapshot.records
         guard records.allSatisfy({ $0.blob != nil }) else {

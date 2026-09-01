@@ -1,8 +1,11 @@
-// Errors.swift — the complete error surface (errors.py).
+// Errors.swift — one frozen enum mirroring microfreak.errors. The Python
+// class hierarchy's grouping is expressed as a computed `group` so callers
+// can still catch coarsely.
 //
-// One enum replaces the Python class hierarchy; grouping predicates preserve
-// the hierarchy's catch ergonomics. All payloads Sendable. Messages mirror
-// the Python strings.
+// Nothing else escapes FreakCore's public API: adapters catch every backend
+// and Foundation error and rethrow .transport / .integrity / .libraryCorrupt
+// as appropriate. CancellationError from structured concurrency is always
+// translated to .operationCancelled before crossing a public boundary.
 
 import Foundation
 
@@ -22,136 +25,140 @@ public enum WriteStage: String, Sendable {
 
 public struct VerifyMismatch: Sendable, Equatable {
     public let slot: Int
-    public let expectedSha256: String          // "" for a rename verify
-    public let actualSha256: String?
+    public let expectedSha256: String     // "" for a rename
+    public let actualSha256: String?      // nil when the name already mismatched (no blob read)
     public let expectedName: String
     public let actualName: String?
-    public let firstDifference: Int?
-    public let expectedLen: Int
-    public let actualLen: Int
+    public let firstDifference: Int?      // first differing blob byte index, nil for name-only
+    public let expectedLength: Int
+    public let actualLength: Int
 
     public init(slot: Int, expectedSha256: String, actualSha256: String?,
                 expectedName: String, actualName: String?,
-                firstDifference: Int?, expectedLen: Int, actualLen: Int) {
+                firstDifference: Int?, expectedLength: Int, actualLength: Int) {
         self.slot = slot
         self.expectedSha256 = expectedSha256
         self.actualSha256 = actualSha256
         self.expectedName = expectedName
         self.actualName = actualName
         self.firstDifference = firstDifference
-        self.expectedLen = expectedLen
-        self.actualLen = actualLen
+        self.expectedLength = expectedLength
+        self.actualLength = actualLength
     }
 }
 
-public enum FreakError: Error, Sendable, Equatable, CustomStringConvertible {
-    // ProtocolError family
-    case protocolViolation(detail: String)
+public enum FreakError: Error, Equatable, Sendable {
+
+    // -- protocol (Python ProtocolError subtree)
     case slotOutOfRange(slot: Int)
     case blobSize(expected: Int, actual: Int)
-    case invalidName(detail: String)
-    // TransportError family — adapters wrap EVERY backend failure here,
-    // with the backend's own description flattened into `detail`
+    case invalidName(reason: String)
+    case protocolViolation(detail: String)          // Python's bare ProtocolError
+
+    // -- transport
+    /// Backend failure. `detail` embeds the underlying error's description
+    /// (Swift can't carry an Equatable existential; adapters format the
+    /// cause into the string).
     case transport(detail: String)
-    case transportUnavailable(detail: String)          // parity case; see §10
+    case transportUnavailable(detail: String)       // backend cannot be used at all
     case deviceNotFound(inputs: [String], outputs: [String])
-    // transaction
+
+    // -- transaction
     case deviceTimeout(stage: TimeoutStage, slot: Int?)
     case replyMismatch(requestedSlot: Int, repliedSlot: Int?, attempts: Int)
-    // WriteError family
+
+    // -- writes (Python WriteError subtree)
     case chunkNotAcked(slot: Int, chunkIndex: Int)
-    case writeAborted(stage: WriteStage, slot: Int, chunksSent: Int, underlying: String?)
+    case writeAborted(stage: WriteStage, slot: Int, chunksSent: Int)
     case verifyMismatch(VerifyMismatch)
-    // cancellation
-    case cancelled(done: Int, total: Int)
-    // restore's ".completed" attachment (Python sets e.completed dynamically)
-    indirect case restoreStopped(completed: [WriteReport], underlying: FreakError)
-    // stored data
+
+    // -- cancellation
+    case operationCancelled(done: Int, total: Int)
+
+    // -- stored data
     case integrity(path: String, detail: String)
-    // LibraryError family
     case entryNotFound(entryID: String)
     case libraryCorrupt(path: String, detail: String)
-    case libraryExists(path: String)                   // Python FileExistsError
-    case libraryNotFound(path: String)                 // Python FileNotFoundError
-    // precondition failures (Python ValueError)
-    case snapshotMissingHashes                         // diff on hash-less snapshot
-    case snapshotMissingBlobs                          // importSnapshot without kept blobs
+    case libraryExists(path: String)                // Python: FileExistsError from Library.create
+    case libraryNotFound(path: String)              // Python: FileNotFoundError from Library.open
 
-    // ---------------------------------------------------------- predicates
+    // -- API misuse (Python raised ValueError)
+    case snapshotMissingHashes                      // diff over a hash-less snapshot
+    case snapshotMissingBlobs                       // importSnapshot without kept blobs
 
-    /// Python `isinstance(e, ProtocolError)`.
-    public var isProtocolError: Bool {
-        switch self {
-        case .protocolViolation, .slotOutOfRange, .blobSize, .invalidName:
-            return true
-        default:
-            return false
-        }
+    // -- composite (Python attached .completed to the exception)
+    indirect case restoreFailed(underlying: FreakError, completed: [WriteReport])
+}
+
+public extension FreakError {
+    enum Group: Sendable {
+        case protocolError
+        case transport
+        case transaction
+        case write
+        case cancellation
+        case storage
+        case library
+        case usage
+        case composite
     }
 
-    /// Python `isinstance(e, TransportError)`.
-    public var isTransportError: Bool {
+    var group: Group {
         switch self {
+        case .slotOutOfRange, .blobSize, .invalidName, .protocolViolation:
+            return .protocolError
         case .transport, .transportUnavailable, .deviceNotFound:
-            return true
-        default:
-            return false
-        }
-    }
-
-    /// Python `isinstance(e, WriteError)`.
-    public var isWriteError: Bool {
-        switch self {
+            return .transport
+        case .deviceTimeout, .replyMismatch:
+            return .transaction
         case .chunkNotAcked, .writeAborted, .verifyMismatch:
-            return true
-        default:
-            return false
-        }
-    }
-
-    /// Python `isinstance(e, LibraryError)`.
-    public var isLibraryError: Bool {
-        switch self {
+            return .write
+        case .operationCancelled:
+            return .cancellation
+        case .integrity:
+            return .storage
         case .entryNotFound, .libraryCorrupt, .libraryExists, .libraryNotFound:
-            return true
-        default:
-            return false
+            return .library
+        case .snapshotMissingHashes, .snapshotMissingBlobs:
+            return .usage
+        case .restoreFailed:
+            return .composite
         }
     }
+}
 
-    // --------------------------------------------------------- description
-
-    public var description: String {
+extension FreakError: LocalizedError {
+    /// Mirrors the Python messages' information content (exact wording free).
+    public var errorDescription: String? {
         switch self {
-        case .protocolViolation(let detail):
-            return detail
         case .slotOutOfRange(let slot):
             return "slot \(slot) out of range"
         case .blobSize(let expected, let actual):
             return "blob is \(actual) bytes, expected \(expected)"
-        case .invalidName(let detail):
+        case .invalidName(let reason):
+            return "invalid name: \(reason)"
+        case .protocolViolation(let detail):
             return detail
         case .transport(let detail):
-            return detail
+            return "transport failure: \(detail)"
         case .transportUnavailable(let detail):
-            return detail
+            return "transport unavailable: \(detail)"
         case .deviceNotFound(let inputs, let outputs):
-            return "No MicroFreak MIDI port found.\n"
+            return "No MicroFreak MIDI endpoint found.\n"
                 + "  inputs seen:  \(inputs)\n"
                 + "  outputs seen: \(outputs)"
         case .deviceTimeout(let stage, let slot):
             let suffix = slot.map { " (slot \($0))" } ?? ""
-            return "device timeout during \(stage.rawValue)" + suffix
+            return "device timeout during \(stage.rawValue)\(suffix)"
         case .replyMismatch(let requested, let replied, let attempts):
-            let rep = replied.map(String.init) ?? "nil"
+            let who = replied.map(String.init) ?? "another slot"
             return "asked for slot \(requested), device kept answering for "
-                + "slot \(rep) after \(attempts) attempts"
+                + "slot \(who) after \(attempts) attempts"
         case .chunkNotAcked(let slot, let chunkIndex):
             return "no 0x18 ack for chunk \(chunkIndex) writing slot \(slot)"
-        case .writeAborted(let stage, let slot, let chunksSent, let underlying):
-            let cause = underlying.map { ": \($0)" } ?? ""
+        case .writeAborted(let stage, let slot, let chunksSent):
             return "write to slot \(slot) aborted at stage '\(stage.rawValue)' "
-                + "(\(chunksSent) chunks sent)" + cause
+                + "(\(chunksSent) chunks sent)"
         case .verifyMismatch(let m):
             var detail: [String] = []
             if let actualName = m.actualName, actualName != m.expectedName {
@@ -160,12 +167,10 @@ public enum FreakError: Error, Sendable, Equatable, CustomStringConvertible {
             if let actualSha = m.actualSha256, actualSha != m.expectedSha256 {
                 detail.append("sha \(actualSha.prefix(12)) != \(m.expectedSha256.prefix(12))")
             }
-            let tail = detail.isEmpty ? "mismatch" : detail.joined(separator: "; ")
-            return "verify failed for slot \(m.slot): " + tail
-        case .cancelled(let done, let total):
+            let joined = detail.isEmpty ? "mismatch" : detail.joined(separator: "; ")
+            return "verify failed for slot \(m.slot): \(joined)"
+        case .operationCancelled(let done, let total):
             return "operation cancelled after \(done)/\(total)"
-        case .restoreStopped(let completed, let underlying):
-            return "restore stopped after \(completed.count) slots: \(underlying.description)"
         case .integrity(let path, let detail):
             return "\(path): \(detail)"
         case .entryNotFound(let entryID):
@@ -173,15 +178,18 @@ public enum FreakError: Error, Sendable, Equatable, CustomStringConvertible {
         case .libraryCorrupt(let path, let detail):
             return "\(path): \(detail)"
         case .libraryExists(let path):
-            return "\(path): a library already exists here — use "
-                + "Library.open(); create() will not overwrite an index"
+            return "\(path): a library already exists here — use Library.open; "
+                + "create(at:) will not overwrite an index"
         case .libraryNotFound(let path):
             return "\(path): no library here — create one"
         case .snapshotMissingHashes:
             return "diff requires a snapshot with blob hashes"
         case .snapshotMissingBlobs:
             return "importSnapshot requires a snapshot with blobs "
-                + "(snapshot(readBlobs: true, keepBlobs: true))"
+                + "(snapshot with readBlobs and keepBlobs)"
+        case .restoreFailed(let underlying, let completed):
+            return "restore stopped after \(completed.count) slots: "
+                + (underlying.errorDescription ?? String(describing: underlying))
         }
     }
 }

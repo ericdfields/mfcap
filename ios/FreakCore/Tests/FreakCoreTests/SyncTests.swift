@@ -1,6 +1,6 @@
 // SyncTests.swift — the pure decision-table diff beyond the golden vectors:
-// refusal on hash-less snapshots, by(status:), row ordering, and an
-// end-to-end snapshot -> import -> diff pass over the simulated device.
+// refusal on hash-less snapshots, byStatus, row ordering, and an end-to-end
+// snapshot -> import -> diff pass over the simulated device.
 
 import Foundation
 import Testing
@@ -25,30 +25,37 @@ struct SyncTests {
                      addedAt: "2026-09-01T00:00:00", tags: [])
     }
 
+    private func slotMap(_ entries: [LibraryEntry]) -> [Int: LibraryEntry] {
+        var out: [Int: LibraryEntry] = [:]
+        for e in entries {
+            if let slot = e.slot {
+                out[slot] = e
+            }
+        }
+        return out
+    }
+
     @Test func refusesHashlessSnapshots() {
-        let lib = Library(root: URL(fileURLWithPath: "/unused"), entries: [])
         let snap = snapshot([record(0, "A", "sha-a"), record(1, "B", nil)])
         #expect(throws: FreakError.snapshotMissingHashes) {
-            try FreakCore.diff(snap, lib)
+            try computeDiff(snapshot: snap, slotMap: [:])
         }
     }
 
     @Test func rowsComeBackAscendingWithByStatus() throws {
-        let entries = [entry(0, name: "A", sha: "sha-a", slot: 9),
-                       entry(1, name: "B", sha: "sha-other", slot: 2)]
-        let lib = Library(root: URL(fileURLWithPath: "/unused"), entries: entries)
+        let map = slotMap([entry(0, name: "A", sha: "sha-a", slot: 9),
+                           entry(1, name: "B", sha: "sha-other", slot: 2)])
         // records deliberately unsorted; unique shas so nothing is expendable
         let snap = snapshot([record(9, "A", "sha-a"),
                              record(2, "B", "sha-b"),
                              record(5, "C", "sha-c")])
-        let result = try FreakCore.diff(snap, lib)
+        let result = try computeDiff(snapshot: snap, slotMap: map)
         #expect(result.slots.map(\.slot) == [2, 5, 9], "one row per record, ascending")
         #expect(result.slots.map(\.status) == [.differs, .deviceOnly, .inSync])
-        #expect(result.by(status: .inSync).map(\.slot) == [9])
-        #expect(result.by(status: .differs).map(\.slot) == [2])
-        #expect(result.by(status: .libraryOnly).isEmpty)
-        // SlotDiff.device is always populated (tightened; §10 deviation 5)
-        #expect(result.slots.allSatisfy { $0.device.slot == $0.slot })
+        #expect(result.byStatus(.inSync).map(\.slot) == [9])
+        #expect(result.byStatus(.differs).map(\.slot) == [2])
+        #expect(result.byStatus(.libraryOnly).isEmpty)
+        #expect(result.slots.allSatisfy { $0.device?.slot == $0.slot })
         #expect(result.slots.map { $0.library?.id } == ["e1", nil, "e0"])
     }
 
@@ -62,21 +69,23 @@ struct SyncTests {
     }
 
     /// End to end offline: snapshot the factory sim with kept blobs, import
-    /// into a fresh library, then diff — named slots in sync, Init slots
-    /// empty.
+    /// into a fresh library, then diff via Library.diff(against:) — named
+    /// slots in sync, Init slots empty.
     @Test func snapshotImportDiffRoundTrip() async throws {
         let root = tempDir("sync-roundtrip")
         defer { try? FileManager.default.removeItem(at: root) }
         let sim = SimulatedMicroFreak.factoryFresh(replyLag: false)
         let device = makeDevice(sim)
-        let slots = [0, 1, 2, 500, 501, 502, 503]         // 500+ are the Init block
-        let snap = try await device.snapshot(keepBlobs: true, slots: slots)
+        var opts = SnapshotOptions()
+        opts.keepBlobs = true
+        opts.slots = [0, 1, 2, 500, 501, 502, 503]         // 500+ are the Init block
+        let snap = try await device.snapshot(options: opts)
         let lib = try Library.create(at: root)
-        let added = try lib.importSnapshot(snap)
+        let added = try await lib.importSnapshot(snap)
         #expect(added.map(\.slot) == [0, 1, 2], "Init duplicates are expendable, skipped")
-        let result = try FreakCore.diff(snap, lib)
-        #expect(result.by(status: .inSync).map(\.slot) == [0, 1, 2])
-        #expect(result.by(status: .empty).map(\.slot) == [500, 501, 502, 503])
-        #expect(result.by(status: .differs).isEmpty && result.by(status: .deviceOnly).isEmpty)
+        let result = try await lib.diff(against: snap)
+        #expect(result.byStatus(.inSync).map(\.slot) == [0, 1, 2])
+        #expect(result.byStatus(.empty).map(\.slot) == [500, 501, 502, 503])
+        #expect(result.byStatus(.differs).isEmpty && result.byStatus(.deviceOnly).isEmpty)
     }
 }

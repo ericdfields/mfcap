@@ -1,6 +1,5 @@
 // AnalysisTests.swift — shaCensus, findExpendable edges beyond the golden
-// vectors, and the pickScratchSlot preference rules (test_analysis.py +
-// test_scratch.py intent).
+// vectors, and the pickScratchSlot preference rules.
 
 import Foundation
 import Testing
@@ -22,7 +21,7 @@ struct AnalysisTests {
     }
 
     @Test func defaultThresholdIsThree() {
-        #expect(FreakProtocol.duplicateThreshold == 3)
+        #expect(Wire.duplicateThreshold == 3)
         let two = [record(0, "D", "d"), record(1, "D", "d"), record(2, "S", "s")]
         #expect(Analysis.findExpendable(two).isEmpty)
         let three = two + [record(3, "D", "d")]

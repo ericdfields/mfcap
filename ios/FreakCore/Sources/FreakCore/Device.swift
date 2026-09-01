@@ -1,84 +1,132 @@
-// Device.swift — the MicroFreakDevice actor (device.py).
+// Device.swift — FreakDeviceProtocol (the app-facing seam), MicroFreakDevice
+// (port of device.py), and FreakDeviceFactory.
 //
-// The concurrency keystone. Python's blocking-synchronous core is preserved
-// verbatim INSIDE an actor whose executor is a dedicated dispatch queue, so
-// blocking waits never touch the cooperative thread pool. Actor isolation
-// replaces the Python lock — "one transaction at a time" is compiler-
-// enforced because every entry point is actor-isolated and chunk-stream
-// interleaving is unexpressible from outside. Every method is synchronous
-// inside (a transliteration of device.py) and `async throws` at every call
-// site by actor semantics.
-//
-// Every device write is read back and hash-verified by default;
-// verify: false is the explicit per-call opt-out.
+// The app holds `any FreakDeviceProtocol` and never learns whether it is
+// hardware or the simulator. Every device write is read back and
+// hash-verified by default; verify: false is the explicit per-call opt-out.
 
 import Foundation
 
-public actor MicroFreakDevice {
-    public nonisolated let slots: Int
+public struct SnapshotOptions: Sendable {
+    public var readBlobs: Bool = true     // false = fast names-only pass (sha256 nil)
+    public var keepBlobs: Bool = false    // true required for Library.importSnapshot
+    public var slots: [Int]? = nil        // nil = all; sorted ascending before use
 
-    private let session: FreakSession                 // non-Sendable, actor-confined
-    private let clock: ClockFn
-    private let queue: DispatchSerialQueue            // the actor's executor
-    public nonisolated var unownedExecutor: UnownedSerialExecutor {
-        queue.asUnownedSerialExecutor()               // iOS 17 / macOS 14 API
+    public init() {}
+}
+
+public struct BackupOptions: Sendable {
+    public var slots: [Int]? = nil
+    public var resume: Bool = false       // skip slots already on disk with an index entry
+
+    public init() {}
+}
+
+public protocol FreakDeviceProtocol: Sendable {
+    var slotCount: Int { get }
+
+    // reads
+    func name(slot: Int) async throws -> String                       // ~1 ms on hardware
+    func read(slot: Int) async throws -> Preset                       // ~400 ms on hardware
+    func snapshot(options: SnapshotOptions,
+                  progress: ProgressReporter?) async throws -> DeviceSnapshot
+
+    // writes (verified by default via the extension overloads)
+    func write(slot: Int, preset: Preset, verify: Bool) async throws -> WriteReport
+    func rename(slot: Int, name: String, verify: Bool) async throws -> WriteReport
+
+    // backup / restore
+    func backup(to dest: URL, options: BackupOptions,
+                progress: ProgressReporter?) async throws -> BackupSet
+    func restore(from source: BackupSet, slots: [Int]?, verify: Bool,
+                 progress: ProgressReporter?) async throws -> [WriteReport]
+
+    func close() async
+}
+
+/// Default-argument overloads (protocols cannot declare defaults).
+public extension FreakDeviceProtocol {
+    func snapshot() async throws -> DeviceSnapshot {
+        try await snapshot(options: SnapshotOptions(), progress: nil)
     }
 
-    public init(transport: any Transport,
-                slots: Int = FreakProtocol.slots,
-                config: SessionConfig = .init(),
-                clock: @escaping ClockFn = FreakClock.monotonic,
-                sleep: @escaping SleepFn = FreakClock.threadSleep) {
-        self.slots = slots
+    func snapshot(options: SnapshotOptions) async throws -> DeviceSnapshot {
+        try await snapshot(options: options, progress: nil)
+    }
+
+    func write(slot: Int, preset: Preset) async throws -> WriteReport {
+        try await write(slot: slot, preset: preset, verify: true)
+    }
+
+    func rename(slot: Int, name: String) async throws -> WriteReport {
+        try await rename(slot: slot, name: name, verify: true)
+    }
+
+    func backup(to dest: URL) async throws -> BackupSet {
+        try await backup(to: dest, options: BackupOptions(), progress: nil)
+    }
+
+    func restore(from source: BackupSet) async throws -> [WriteReport] {
+        try await restore(from: source, slots: nil, verify: true, progress: nil)
+    }
+}
+
+public final class MicroFreakDevice: FreakDeviceProtocol, Sendable {
+    public let slotCount: Int
+    public let session: FreakSession          // escape hatch, mirrors Python .session
+    private let clock: any FreakClock
+
+    public init(transport: any FreakTransport,
+                slotCount: Int = Wire.slots,
+                config: SessionConfig = SessionConfig(),
+                clock: any FreakClock = SystemClock()) {
+        self.slotCount = slotCount
         self.clock = clock
-        self.queue = DispatchSerialQueue(
-            label: "com.ericbrookfield.freakcore.device", qos: .userInitiated)
-        self.session = FreakSession(transport: transport, config: config,
-                                    clock: clock, sleep: sleep)
+        self.session = FreakSession(transport: transport, config: config, clock: clock)
     }
 
-    /// Closes the transport via the session. No implicit close in deinit —
-    /// owners call close() explicitly.
-    public func close() {
-        session.close()
+    public func close() async {
+        await session.close()
     }
 
     // ------------------------------------------------------------- reads
 
-    public func name(slot: Int) throws -> String {
-        try session.readName(slot: slot).name
+    public func name(slot: Int) async throws -> String {
+        try await session.readName(slot: slot).name
     }
 
-    public func read(slot: Int) throws -> Preset {
-        let info = try session.readName(slot: slot)
-        let blob = try session.readBlob(slot: slot)
+    public func read(slot: Int) async throws -> Preset {
+        let info = try await session.readName(slot: slot)
+        let blob = try await session.readBlob(slot: slot)
         return try Preset(name: info.name, blob: blob, meta: info.meta)
     }
 
     /// Read names (and, by default, blobs + hashes) for the requested slots.
-    /// Cancellation throws .cancelled; no partial snapshot is returned.
-    public func snapshot(readBlobs: Bool = true, keepBlobs: Bool = false,
-                         slots requestedSlots: [Int]? = nil,
-                         progress: ProgressFn? = nil,
-                         cancel: CancelToken? = nil) throws -> DeviceSnapshot {
-        let slotList = requestedSlots.map { $0.sorted() } ?? Array(0..<slots)
+    /// Cancellation throws .operationCancelled; no partial snapshot is ever
+    /// returned. Name read failures of kind .deviceTimeout / .replyMismatch
+    /// are swallowed (the record gets name nil, meta nil); everything else
+    /// propagates.
+    public func snapshot(options: SnapshotOptions,
+                         progress: ProgressReporter?) async throws -> DeviceSnapshot {
+        defer { progress?.finish() }
+        let slotList = options.slots.map { $0.sorted() } ?? Array(0..<slotCount)
         let total = slotList.count
         var records: [SlotRecord] = []
         var nameMs: [Double] = []
         var dumpMs: [Double] = []
         var durations: [Double] = []
-        let tStart = clock()
+        let tStart = clock.now
         for (done, slot) in slotList.enumerated() {
-            if let cancel, cancel.isCancelled {
-                throw FreakError.cancelled(done: done, total: total)
+            if Task.isCancelled {
+                throw FreakError.operationCancelled(done: done, total: total)
             }
-            let tSlot = clock()
+            let tSlot = clock.now
             var nm: String? = nil
             var meta: Data? = nil
             do {
-                let t0 = clock()
-                let info = try session.readName(slot: slot)
-                nameMs.append((clock() - t0) * 1000)
+                let t0 = clock.now
+                let info = try await session.readName(slot: slot)
+                nameMs.append((clock.now - t0) * 1000)
                 nm = info.name
                 meta = info.meta
             } catch let e as FreakError {
@@ -91,29 +139,28 @@ public actor MicroFreakDevice {
             }
             var sha: String? = nil
             var kept: Data? = nil
-            if readBlobs {
-                let t0 = clock()
-                let blob = try session.readBlob(slot: slot)
-                dumpMs.append((clock() - t0) * 1000)
-                sha = FreakProtocol.digest(blob)
-                if keepBlobs {
+            if options.readBlobs {
+                let t0 = clock.now
+                let blob = try await session.readBlob(slot: slot)
+                dumpMs.append((clock.now - t0) * 1000)
+                sha = Wire.digest(blob)
+                if options.keepBlobs {
                     kept = blob
                 }
             }
             records.append(SlotRecord(slot: slot, name: nm, sha256: sha,
                                       meta: meta, blob: kept))
-            durations.append(clock() - tSlot)
+            durations.append(clock.now - tSlot)
             if let progress {
-                let elapsed = clock() - tStart
+                let elapsed = clock.now - tStart
                 let med = durations.sorted()[durations.count / 2]
-                let eta: Double? = durations.isEmpty
-                    ? nil : med * Double(total - done - 1)
-                progress(ProgressEvent(done: done + 1, total: total, slot: slot,
-                                       name: nm ?? "", elapsedSeconds: elapsed,
-                                       etaSeconds: eta))
+                progress.report(ProgressEvent(
+                    done: done + 1, total: total, slot: slot, name: nm ?? "",
+                    elapsedSeconds: elapsed,
+                    etaSeconds: med * Double(total - done - 1)))
             }
         }
-        let elapsed = clock() - tStart
+        let elapsed = clock.now - tStart
         let timing = TimingReport(
             totalSeconds: roundTo(elapsed, places: 3),
             perSlotSeconds: roundTo(elapsed / Double(max(total, 1)), places: 4),
@@ -122,23 +169,22 @@ public actor MicroFreakDevice {
         return DeviceSnapshot(takenAt: isoNow(), records: records, timing: timing)
     }
 
-    // -------------------------------------------- writes (verified by default)
+    // ------------------------------------------ writes (verified by default)
 
-    public func write(slot: Int, preset: Preset, verify: Bool = true,
-                      cancel: CancelToken? = nil) throws -> WriteReport {
-        let t0 = clock()
-        let info = try session.writePreset(slot: slot, preset, cancel: cancel)
+    public func write(slot: Int, preset: Preset, verify: Bool) async throws -> WriteReport {
+        let t0 = clock.now
+        let info = try await session.writePreset(slot: slot, preset: preset)
         var verified: Bool? = nil
         if verify {
             if info.name != preset.name {
                 throw FreakError.verifyMismatch(VerifyMismatch(
                     slot: slot, expectedSha256: preset.sha256, actualSha256: nil,
                     expectedName: preset.name, actualName: info.name,
-                    firstDifference: nil, expectedLen: preset.blob.count,
-                    actualLen: 0))
+                    firstDifference: nil, expectedLength: preset.blob.count,
+                    actualLength: 0))
             }
-            let blob = try session.readBlob(slot: slot)
-            let actual = FreakProtocol.digest(blob)
+            let blob = try await session.readBlob(slot: slot)
+            let actual = Wire.digest(blob)
             if actual != preset.sha256 {
                 let expected = [UInt8](preset.blob)
                 let got = [UInt8](blob)
@@ -147,44 +193,43 @@ public actor MicroFreakDevice {
                 throw FreakError.verifyMismatch(VerifyMismatch(
                     slot: slot, expectedSha256: preset.sha256, actualSha256: actual,
                     expectedName: preset.name, actualName: info.name,
-                    firstDifference: first, expectedLen: expected.count,
-                    actualLen: got.count))
+                    firstDifference: first, expectedLength: expected.count,
+                    actualLength: got.count))
             }
             verified = true
         }
         return WriteReport(slot: slot, sha256: preset.sha256, name: preset.name,
-                           verified: verified, durationSeconds: clock() - t0)
+                           verified: verified, durationSeconds: clock.now - t0)
     }
 
-    public func rename(slot: Int, name: String, verify: Bool = true) throws -> WriteReport {
-        try FreakProtocol.validateName(name)
-        let t0 = clock()
-        let current = try session.readName(slot: slot)          // current meta
-        let info = try session.writeName(slot: slot, name: name, meta: current.meta)
+    public func rename(slot: Int, name: String, verify: Bool) async throws -> WriteReport {
+        try Wire.validateName(name)
+        let t0 = clock.now
+        let current = try await session.readName(slot: slot)          // current meta
+        let info = try await session.writeName(slot: slot, name: name, meta: current.meta)
         var verified: Bool? = nil
         if verify {
             if info.name != name {
                 throw FreakError.verifyMismatch(VerifyMismatch(
                     slot: slot, expectedSha256: "", actualSha256: nil,
                     expectedName: name, actualName: info.name,
-                    firstDifference: nil, expectedLen: 0, actualLen: 0))
+                    firstDifference: nil, expectedLength: 0, actualLength: 0))
             }
             verified = true
         }
         return WriteReport(slot: slot, sha256: "", name: name,
-                           verified: verified, durationSeconds: clock() - t0)
+                           verified: verified, durationSeconds: clock.now - t0)
     }
 
     // ------------------------------------------------------ backup / restore
 
     /// Read every requested slot to the phase-0 on-disk format, persisting
-    /// as it goes (each slot written before the next is read, so a cancelled
-    /// pass leaves valid partial state). Reads only; never writes to the
-    /// device.
-    public func backup(to dest: URL, slots requestedSlots: [Int]? = nil,
-                       resume: Bool = false,
-                       progress: ProgressFn? = nil,
-                       cancel: CancelToken? = nil) throws -> BackupSet {
+    /// as it goes — each slot is on disk before the next is read, so a
+    /// cancelled pass leaves valid partial state. Reads only; never writes
+    /// to the device.
+    public func backup(to dest: URL, options: BackupOptions,
+                       progress: ProgressReporter?) async throws -> BackupSet {
+        defer { progress?.finish() }
         let fm = FileManager.default
         let presetsDir = dest.appendingPathComponent("presets")
         try fm.createDirectory(at: presetsDir, withIntermediateDirectories: true)
@@ -196,49 +241,51 @@ public actor MicroFreakDevice {
             if index["presets"] == nil { index["presets"] = [String: Any]() }
             if index["timing"] == nil { index["timing"] = [String: Any]() }
         } else {
-            index = ["created": isoNow(), "slots": slots,
+            index = ["created": isoNow(), "slots": slotCount,
                      "presets": [String: Any](), "timing": [String: Any]()]
         }
         var presets = (index["presets"] as? [String: Any]) ?? [:]
 
-        let slotList = requestedSlots.map { $0.sorted() } ?? Array(0..<slots)
+        let slotList = options.slots.map { $0.sorted() } ?? Array(0..<slotCount)
         let total = slotList.count
         var nameMs: [Double] = []
         var dumpMs: [Double] = []
         var durations: [Double] = []
-        let tStart = clock()
+        let tStart = clock.now
         for (done, slot) in slotList.enumerated() {
-            if let cancel, cancel.isCancelled {
-                throw FreakError.cancelled(done: done, total: total)
+            if Task.isCancelled {
+                throw FreakError.operationCancelled(done: done, total: total)
             }
             let binPath = presetsDir.appendingPathComponent(String(format: "%03d.bin", slot))
-            if resume && fm.fileExists(atPath: binPath.path) && presets[String(slot)] != nil {
+            if options.resume && fm.fileExists(atPath: binPath.path)
+                && presets[String(slot)] != nil {
                 continue
             }
-            let tSlot = clock()
-            var t0 = clock()
-            let info = try session.readName(slot: slot)
-            nameMs.append((clock() - t0) * 1000)
-            t0 = clock()
-            let blob = try session.readBlob(slot: slot)
-            dumpMs.append((clock() - t0) * 1000)
+            let tSlot = clock.now
+            var t0 = clock.now
+            let info = try await session.readName(slot: slot)  // NOT swallowed here —
+            nameMs.append((clock.now - t0) * 1000)             // a backup wants to know
+            t0 = clock.now
+            let blob = try await session.readBlob(slot: slot)
+            dumpMs.append((clock.now - t0) * 1000)
             try blob.write(to: binPath)
             presets[String(slot)] = ["slot": slot, "name": info.name,
                                      "bytes": blob.count,
-                                     "sha256": FreakProtocol.digest(blob),
+                                     "sha256": Wire.digest(blob),
                                      "meta_hex": info.meta.hexString]
             index["presets"] = presets
-            try atomicWriteText(jsonText(index), to: indexPath)
-            durations.append(clock() - tSlot)
+            try AtomicFile.write(try jsonData(index), to: indexPath)
+            durations.append(clock.now - tSlot)
             if let progress {
-                let elapsed = clock() - tStart
+                let elapsed = clock.now - tStart
                 let med = durations.sorted()[durations.count / 2]
-                progress(ProgressEvent(done: done + 1, total: total, slot: slot,
-                                       name: info.name, elapsedSeconds: elapsed,
-                                       etaSeconds: med * Double(total - done - 1)))
+                progress.report(ProgressEvent(
+                    done: done + 1, total: total, slot: slot, name: info.name,
+                    elapsedSeconds: elapsed,
+                    etaSeconds: med * Double(total - done - 1)))
             }
         }
-        let elapsed = clock() - tStart
+        let elapsed = clock.now - tStart
         let readCount = durations.count
         index["timing"] = [
             "total_seconds": roundTo(elapsed, places: 3),
@@ -246,45 +293,69 @@ public actor MicroFreakDevice {
             "name_ms_median": median(nameMs).map { $0 as Any } ?? NSNull(),
             "dump_ms_median": median(dumpMs).map { $0 as Any } ?? NSNull(),
         ] as [String: Any]
-        try atomicWriteText(jsonText(index), to: indexPath)
-        return try BackupSet.load(from: dest)
+        try AtomicFile.write(try jsonData(index), to: indexPath)
+        return try BackupSet.load(dest)
     }
 
     /// Write presets from a BackupSet back to the device. Stops at the first
-    /// thrown error (a failing write path must not keep writing); reports
-    /// for completed slots travel in .restoreStopped(completed:underlying:).
-    public func restore(from source: BackupSet, slots requestedSlots: [Int]? = nil,
-                        verify: Bool = true,
-                        progress: ProgressFn? = nil,
-                        cancel: CancelToken? = nil) throws -> [WriteReport] {
-        let slotList = requestedSlots.map { $0.sorted() } ?? source.coveredSlots()
+    /// thrown error — a failing write path must not keep writing — and any
+    /// FreakError (cancellation included) is rethrown as
+    /// .restoreFailed(underlying:completed:).
+    public func restore(from source: BackupSet, slots: [Int]?, verify: Bool,
+                        progress: ProgressReporter?) async throws -> [WriteReport] {
+        defer { progress?.finish() }
+        let slotList = slots.map { $0.sorted() } ?? source.coveredSlots()
         let total = slotList.count
         var reports: [WriteReport] = []
         var durations: [Double] = []
-        let tStart = clock()
+        let tStart = clock.now
         for (done, slot) in slotList.enumerated() {
             let rep: WriteReport
             do {
-                if let cancel, cancel.isCancelled {
-                    throw FreakError.cancelled(done: done, total: total)
+                if Task.isCancelled {
+                    throw FreakError.operationCancelled(done: done, total: total)
                 }
-                let preset = try source.preset(slot: slot)
-                let t0 = clock()
-                rep = try write(slot: slot, preset: preset, verify: verify,
-                                cancel: cancel)
-                durations.append(clock() - t0)
+                let preset = try source.preset(slot)
+                let t0 = clock.now
+                rep = try await write(slot: slot, preset: preset, verify: verify)
+                durations.append(clock.now - t0)
             } catch let e as FreakError {
-                throw FreakError.restoreStopped(completed: reports, underlying: e)
+                throw FreakError.restoreFailed(underlying: e, completed: reports)
             }
             reports.append(rep)
             if let progress {
-                let elapsed = clock() - tStart
+                let elapsed = clock.now - tStart
                 let med = durations.sorted()[durations.count / 2]
-                progress(ProgressEvent(done: done + 1, total: total, slot: slot,
-                                       name: rep.name, elapsedSeconds: elapsed,
-                                       etaSeconds: med * Double(total - done - 1)))
+                progress.report(ProgressEvent(
+                    done: done + 1, total: total, slot: slot, name: rep.name,
+                    elapsedSeconds: elapsed,
+                    etaSeconds: med * Double(total - done - 1)))
             }
         }
         return reports
     }
+}
+
+// ----------------------------------------------------------- device factory
+
+public enum FreakDeviceFactory {
+    /// Practice mode: MicroFreakDevice over SimulatedMicroFreak.factoryFresh.
+    /// Instant, offline, 269 duplicated Init slots among named pseudo-presets
+    /// — the full UI (browse, backup, sync, expendability badges) works on
+    /// the couch.
+    public static func practice(initCopies: Int = 269, seed: Int = 0) -> any FreakDeviceProtocol {
+        MicroFreakDevice(transport: SimulatedMicroFreak.factoryFresh(
+            initCopies: initCopies, seed: seed))
+    }
+
+    #if canImport(CoreMIDI)
+    /// Hardware: MicroFreakDevice over CoreMIDITransport.open(hints:exclude:).
+    /// Throws .deviceNotFound / .transport — the connect screen shows the
+    /// endpoint lists carried in .deviceNotFound and offers practice mode as
+    /// the fallback.
+    public static func hardware(hints: [String] = CoreMIDITransport.defaultHints)
+        throws -> any FreakDeviceProtocol {
+        MicroFreakDevice(transport: try CoreMIDITransport.open(hints: hints))
+    }
+    #endif
 }

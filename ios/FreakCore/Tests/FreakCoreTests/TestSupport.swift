@@ -1,10 +1,14 @@
-// TestSupport.swift — shared helpers for the FreakCore test suite:
-// hex codecs, the deterministic virtual clock, a 7-bit blob generator, and
-// the scripted Transport doubles the session/device tests drive.
+// TestSupport.swift — shared helpers for the FreakCore test suite: hex
+// codecs, a 7-bit blob generator, and the scripted FreakTransport doubles
+// the session/device tests drive. Every double is an actor — no locks, no
+// @unchecked Sendable anywhere in the test tree.
 
 import Foundation
+import os
 import Testing
 @testable import FreakCore
+
+typealias Frame = Wire.Frame
 
 // ------------------------------------------------------------- hex helpers
 
@@ -18,46 +22,16 @@ func spacedHex(_ data: Data) -> String {
     data.map { String(format: "%02X", $0) }.joined(separator: " ")
 }
 
-// ---------------------------------------------------------- virtual clock
+// ---------------------------------------------------------------- builders
 
-/// Deterministic monotonic clock; sleep() advances it by max(dt, 1e-4) —
-/// the same FakeClock the Python suite and tools/gen_vectors.py use, so
-/// silent timeout windows cost nothing real.
-// @unchecked Sendable: NSLock-guarded state — the same pattern the §4 table
-// sanctions for CancelToken (test-only double).
-final class TestClock: @unchecked Sendable {
-    private let lock = NSLock()
-    private var now = 0.0
-
-    var clock: ClockFn {
-        { [self] in
-            lock.lock()
-            defer { lock.unlock() }
-            return now
-        }
-    }
-
-    var sleep: SleepFn {
-        { [self] dt in
-            lock.lock()
-            now += max(dt, 1e-4)
-            lock.unlock()
-        }
-    }
-}
-
-func makeSession(_ transport: any Transport,
+func makeSession(_ transport: any FreakTransport,
                  config: SessionConfig = .init()) -> FreakSession {
-    let tc = TestClock()
-    return FreakSession(transport: transport, config: config,
-                        clock: tc.clock, sleep: tc.sleep)
+    FreakSession(transport: transport, config: config, clock: TestClock())
 }
 
-func makeDevice(_ transport: any Transport,
-                slots: Int = FreakProtocol.slots) -> MicroFreakDevice {
-    let tc = TestClock()
-    return MicroFreakDevice(transport: transport, slots: slots,
-                            clock: tc.clock, sleep: tc.sleep)
+func makeDevice(_ transport: any FreakTransport,
+                slotCount: Int = Wire.slots) -> MicroFreakDevice {
+    MicroFreakDevice(transport: transport, slotCount: slotCount, clock: TestClock())
 }
 
 // -------------------------------------------------------------- test data
@@ -66,30 +40,27 @@ func makeDevice(_ transport: any Transport,
 func blob7(_ seed: Int) -> Data {
     var out = [UInt8]()
     var x = (seed % 126) + 1
-    while out.count < FreakProtocol.blobSize {
+    while out.count < Wire.blobSize {
         x = (x * 75 + 74) % 127
         out.append(UInt8(x))
     }
-    return Data(out.prefix(FreakProtocol.blobSize))
+    return Data(out.prefix(Wire.blobSize))
 }
 
 let testMeta = Data([0x18, 0x00, 0x00, 0x00, 0x00, 0x7F, 0x01, 0x00, 0x33])
 
 // -------------------------------------------------------------- transports
-// All doubles are Transport implementations, whose @unchecked Sendable is
-// sanctioned by §4; each is internally NSLock-synchronized.
 
 /// Never answers anything.
-final class DeadTransport: Transport, @unchecked Sendable {
-    func send(_ message: Data) throws {}
-    func receive(timeout: TimeInterval) throws -> Data? { nil }
-    func close() {}
+actor DeadTransport: FreakTransport {
+    func send(_ message: Data) async throws {}
+    func receive(timeout: TimeInterval) async throws -> Data? { nil }
+    func close() async {}
 }
 
 /// Always replies to a name read with a reply for one fixed other slot — a
 /// lag that never resolves.
-final class WrongSlotTransport: Transport, @unchecked Sendable {
-    private let lock = NSLock()
+actor WrongSlotTransport: FreakTransport {
     private let wrong: Int
     private var outbox: [Data] = []
     private var sendCount = 0
@@ -98,40 +69,28 @@ final class WrongSlotTransport: Transport, @unchecked Sendable {
         self.wrong = wrongSlot
     }
 
-    var sends: Int {
-        lock.lock()
-        defer { lock.unlock() }
-        return sendCount
-    }
+    var sends: Int { sendCount }
 
-    func send(_ message: Data) throws {
-        lock.lock()
-        defer { lock.unlock() }
-        guard let f = FreakProtocol.parse(message),
-              f.cmd == FreakProtocol.cmdOpen, f.data.count == 3,
-              f.data.last == 0 else { return }
+    func send(_ message: Data) async throws {
+        guard let f = Wire.parse(message),
+              f.cmd == Wire.cmdOpen, f.data.count == 3, f.data.last == 0 else { return }
         sendCount += 1
-        let (bank, pos) = try FreakProtocol.addr(wrong)
+        let (bank, pos) = try Wire.addr(wrong)
         let meta = Data([0, 0, 0, 0, 0, pos, wrong < 384 ? 0 : 1, 0, 0x33])
-        let payload = Data([bank, pos, 0]) + meta + Data("Wrong".utf8)
-            + Data(count: 18)
-        outbox.append(FreakProtocol.frame(seq: 0, length: 0x23,
-                                          cmd: FreakProtocol.cmdName, data: payload))
+        let payload = Data([bank, pos, 0]) + meta + Data("Wrong".utf8) + Data(count: 18)
+        outbox.append(Wire.frame(seq: 0, length: 0x23, cmd: Wire.cmdName, data: payload))
     }
 
-    func receive(timeout: TimeInterval) throws -> Data? {
-        lock.lock()
-        defer { lock.unlock() }
-        return outbox.isEmpty ? nil : outbox.removeFirst()
+    func receive(timeout: TimeInterval) async throws -> Data? {
+        outbox.isEmpty ? nil : outbox.removeFirst()
     }
 
-    func close() {}
+    func close() async {}
 }
 
 /// Answers a name read with a malformed 0x52 (embedded bank 5 = slot 640,
 /// outside the device) immediately followed by the genuine reply.
-final class BadAddressThenGoodTransport: Transport, @unchecked Sendable {
-    private let lock = NSLock()
+actor BadAddressThenGoodTransport: FreakTransport {
     private let goodSlot: Int
     private var outbox: [Data] = []
 
@@ -139,199 +98,201 @@ final class BadAddressThenGoodTransport: Transport, @unchecked Sendable {
         self.goodSlot = goodSlot
     }
 
-    func send(_ message: Data) throws {
-        lock.lock()
-        defer { lock.unlock() }
-        guard let f = FreakProtocol.parse(message),
-              f.cmd == FreakProtocol.cmdOpen, f.data.count == 3,
-              f.data.last == 0 else { return }
-        let bogus = Data([5, 0, 0]) + Data(count: 9) + Data("Bogus".utf8)
-            + Data(count: 18)
-        outbox.append(FreakProtocol.frame(seq: f.seq, length: 0x23,
-                                          cmd: FreakProtocol.cmdName, data: bogus))
-        let (bank, pos) = try FreakProtocol.addr(goodSlot)
+    func send(_ message: Data) async throws {
+        guard let f = Wire.parse(message),
+              f.cmd == Wire.cmdOpen, f.data.count == 3, f.data.last == 0 else { return }
+        let bogus = Data([5, 0, 0]) + Data(count: 9) + Data("Bogus".utf8) + Data(count: 18)
+        outbox.append(Wire.frame(seq: f.seq, length: 0x23, cmd: Wire.cmdName, data: bogus))
+        let (bank, pos) = try Wire.addr(goodSlot)
         let meta = Data([0, 0, 0, 0, 0, pos, goodSlot < 384 ? 0 : 1, 0, 0x33])
-        let payload = Data([bank, pos, 0]) + meta + Data("Good".utf8)
-            + Data(count: 19)
-        outbox.append(FreakProtocol.frame(seq: f.seq, length: 0x23,
-                                          cmd: FreakProtocol.cmdName, data: payload))
+        let payload = Data([bank, pos, 0]) + meta + Data("Good".utf8) + Data(count: 19)
+        outbox.append(Wire.frame(seq: f.seq, length: 0x23, cmd: Wire.cmdName, data: payload))
     }
 
-    func receive(timeout: TimeInterval) throws -> Data? {
-        lock.lock()
-        defer { lock.unlock() }
-        return outbox.isEmpty ? nil : outbox.removeFirst()
+    func receive(timeout: TimeInterval) async throws -> Data? {
+        outbox.isEmpty ? nil : outbox.removeFirst()
     }
 
-    func close() {}
+    func close() async {}
 }
 
 /// A device gone wrong: after the dump open it streams 0x16 chunks forever
 /// and never sends the 0x17 last-chunk marker — the case the >= chunkCount
-/// guard in FreakSession.readBlob exists for.
-final class RunawayDumpTransport: Transport, @unchecked Sendable {
-    private let lock = NSLock()
+/// guard in FreakSession's dump loop exists for.
+actor RunawayDumpTransport: FreakTransport {
     private var opened = false
 
-    func send(_ message: Data) throws {
-        lock.lock()
-        defer { lock.unlock() }
-        if let f = FreakProtocol.parse(message),
-           f.cmd == FreakProtocol.cmdOpen, f.data.count == 3, f.data.last == 1 {
+    func send(_ message: Data) async throws {
+        if let f = Wire.parse(message),
+           f.cmd == Wire.cmdOpen, f.data.count == 3, f.data.last == 1 {
             opened = true
         }
     }
 
-    func receive(timeout: TimeInterval) throws -> Data? {
-        lock.lock()
-        defer { lock.unlock() }
+    func receive(timeout: TimeInterval) async throws -> Data? {
         guard opened else { return nil }
-        return FreakProtocol.frame(seq: 0, length: 0x20,
-                                   cmd: FreakProtocol.cmdChunkMore,
-                                   data: Data(repeating: 0x55, count: 32))
+        return Wire.frame(seq: 0, length: 0x20, cmd: Wire.cmdChunkMore,
+                          data: Data(repeating: 0x55, count: 32))
     }
 
-    func close() {}
+    func close() async {}
 }
 
 /// Passes through to the inner transport until `judge(frame)` says fail,
 /// then throws .transport from send().
-final class FailingSendTransport: Transport, @unchecked Sendable {
-    private let inner: any Transport
+actor FailingSendTransport: FreakTransport {
+    private let inner: any FreakTransport
     private let judge: @Sendable (Frame) -> Bool
 
-    init(_ inner: any Transport, judge: @escaping @Sendable (Frame) -> Bool) {
+    init(_ inner: any FreakTransport, judge: @escaping @Sendable (Frame) -> Bool) {
         self.inner = inner
         self.judge = judge
     }
 
-    func send(_ message: Data) throws {
-        if let f = FreakProtocol.parse(message), judge(f) {
+    func send(_ message: Data) async throws {
+        if let f = Wire.parse(message), judge(f) {
             throw FreakError.transport(detail: "wire pulled")
         }
-        try inner.send(message)
+        try await inner.send(message)
     }
 
-    func receive(timeout: TimeInterval) throws -> Data? {
-        try inner.receive(timeout: timeout)
+    func receive(timeout: TimeInterval) async throws -> Data? {
+        try await inner.receive(timeout: timeout)
     }
 
-    func close() {
-        inner.close()
+    func close() async {
+        await inner.close()
+    }
+}
+
+/// Passes through, and cancels the CURRENT task right after forwarding a
+/// frame the judge matches — a deterministic way to cancel a long operation
+/// mid-flight (the operation's next Task.isCancelled poll throws
+/// .operationCancelled).
+actor SelfCancellingTransport: FreakTransport {
+    private let inner: any FreakTransport
+    private let judge: @Sendable (Frame) -> Bool
+
+    init(_ inner: any FreakTransport, judge: @escaping @Sendable (Frame) -> Bool) {
+        self.inner = inner
+        self.judge = judge
+    }
+
+    func send(_ message: Data) async throws {
+        try await inner.send(message)
+        if let f = Wire.parse(message), judge(f) {
+            withUnsafeCurrentTask { $0?.cancel() }
+        }
+    }
+
+    func receive(timeout: TimeInterval) async throws -> Data? {
+        try await inner.receive(timeout: timeout)
+    }
+
+    func close() async {
+        await inner.close()
     }
 }
 
 /// Delivers everything except device 0x18 acks once armed.
-final class AckDroppingTransport: Transport, @unchecked Sendable {
-    private let lock = NSLock()
-    private let inner: any Transport
+actor AckDroppingTransport: FreakTransport {
+    private let inner: any FreakTransport
     private var dropping = false
 
-    init(_ inner: any Transport) {
+    init(_ inner: any FreakTransport) {
         self.inner = inner
     }
 
-    var dropAcks: Bool {
-        get { lock.lock(); defer { lock.unlock() }; return dropping }
-        set { lock.lock(); dropping = newValue; lock.unlock() }
+    func dropAcks(_ enabled: Bool) {
+        dropping = enabled
     }
 
-    func send(_ message: Data) throws {
-        try inner.send(message)
+    func send(_ message: Data) async throws {
+        try await inner.send(message)
     }
 
-    func receive(timeout: TimeInterval) throws -> Data? {
+    func receive(timeout: TimeInterval) async throws -> Data? {
         while true {
-            guard let raw = try inner.receive(timeout: timeout) else { return nil }
-            if dropAcks, let f = FreakProtocol.parse(raw), f.isAck {
+            guard let raw = try await inner.receive(timeout: timeout) else { return nil }
+            if dropping, let f = Wire.parse(raw), f.isAck {
                 continue
             }
             return raw
         }
     }
 
-    func close() {
-        inner.close()
+    func close() async {
+        await inner.close()
     }
 }
 
 /// After the last chunk goes out, suppress long-0x52 name replies so the
 /// final read-back times out.
-final class ReplyDroppingTransport: Transport, @unchecked Sendable {
-    private let lock = NSLock()
-    private let inner: any Transport
+actor ReplyDroppingTransport: FreakTransport {
+    private let inner: any FreakTransport
     private var afterLastChunk = false
 
-    init(_ inner: any Transport) {
+    init(_ inner: any FreakTransport) {
         self.inner = inner
     }
 
-    func send(_ message: Data) throws {
-        let f = FreakProtocol.parse(message)
-        try inner.send(message)
-        if let f, f.cmd == FreakProtocol.cmdChunkLast {
-            lock.lock()
+    func send(_ message: Data) async throws {
+        let f = Wire.parse(message)
+        try await inner.send(message)
+        if let f, f.cmd == Wire.cmdChunkLast {
             afterLastChunk = true
-            lock.unlock()
         }
     }
 
-    func receive(timeout: TimeInterval) throws -> Data? {
+    func receive(timeout: TimeInterval) async throws -> Data? {
         while true {
-            guard let raw = try inner.receive(timeout: timeout) else { return nil }
-            lock.lock()
-            let dropping = afterLastChunk
-            lock.unlock()
-            if dropping, let f = FreakProtocol.parse(raw),
-               f.cmd == FreakProtocol.cmdName {
+            guard let raw = try await inner.receive(timeout: timeout) else { return nil }
+            if afterLastChunk, let f = Wire.parse(raw), f.cmd == Wire.cmdName {
                 continue
             }
             return raw
         }
     }
 
-    func close() {
-        inner.close()
+    func close() async {
+        await inner.close()
     }
 }
 
 /// Passes everything through, but flips one bit of one write chunk in
 /// transit — a wire that lies.
-final class ChunkCorruptingTransport: Transport, @unchecked Sendable {
-    private let lock = NSLock()
-    private let inner: any Transport
+actor ChunkCorruptingTransport: FreakTransport {
+    private let inner: any FreakTransport
     private let chunkIndex: Int
     private let byteOffset: Int
     private var seen = 0
 
-    init(_ inner: any Transport, chunkIndex: Int, byteOffset: Int) {
+    init(_ inner: any FreakTransport, chunkIndex: Int, byteOffset: Int) {
         self.inner = inner
         self.chunkIndex = chunkIndex
         self.byteOffset = byteOffset
     }
 
-    func send(_ message: Data) throws {
+    func send(_ message: Data) async throws {
         var raw = message
-        if let f = FreakProtocol.parse(raw), f.isChunk {
-            lock.lock()
+        if let f = Wire.parse(raw), f.isChunk {
             let hit = seen == chunkIndex
             seen += 1
-            lock.unlock()
             if hit {
                 var body = [UInt8](raw)
                 body[9 + byteOffset] ^= 0x01   // stays 7-bit clean
                 raw = Data(body)
             }
         }
-        try inner.send(raw)
+        try await inner.send(raw)
     }
 
-    func receive(timeout: TimeInterval) throws -> Data? {
-        try inner.receive(timeout: timeout)
+    func receive(timeout: TimeInterval) async throws -> Data? {
+        try await inner.receive(timeout: timeout)
     }
 
-    func close() {
-        inner.close()
+    func close() async {
+        await inner.close()
     }
 }
 
@@ -340,14 +301,13 @@ final class ChunkCorruptingTransport: Transport, @unchecked Sendable {
 /// is remembered), after which any following "in" entries are queued for
 /// receive(). Fully consuming the transcript proves the port emitted
 /// exactly the reference conversation.
-final class TranscriptTransport: Transport, @unchecked Sendable {
-    struct Entry {
+actor TranscriptTransport: FreakTransport {
+    struct Entry: Sendable {
         let dir: String
         let frame: Data
     }
 
-    private let lock = NSLock()
-    private var entries: [Entry]
+    private let entries: [Entry]
     private var pos = 0
     private var inbox: [Data] = []
     private var firstMismatch: String?
@@ -356,27 +316,11 @@ final class TranscriptTransport: Transport, @unchecked Sendable {
         self.entries = entries
     }
 
-    convenience init(transcript: [[String: Any]]) {
-        self.init(transcript.map {
-            Entry(dir: $0["dir"] as! String, frame: hexBytes($0["frame"] as! String))
-        })
-    }
+    var mismatch: String? { firstMismatch }
 
-    var mismatch: String? {
-        lock.lock()
-        defer { lock.unlock() }
-        return firstMismatch
-    }
+    var fullyConsumed: Bool { pos == entries.count && inbox.isEmpty }
 
-    var fullyConsumed: Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        return pos == entries.count && inbox.isEmpty
-    }
-
-    func send(_ message: Data) throws {
-        lock.lock()
-        defer { lock.unlock() }
+    func send(_ message: Data) async throws {
         guard pos < entries.count else {
             return try fail("unexpected extra frame past transcript end: "
                 + spacedHex(message))
@@ -398,13 +342,11 @@ final class TranscriptTransport: Transport, @unchecked Sendable {
         }
     }
 
-    func receive(timeout: TimeInterval) throws -> Data? {
-        lock.lock()
-        defer { lock.unlock() }
-        return inbox.isEmpty ? nil : inbox.removeFirst()
+    func receive(timeout: TimeInterval) async throws -> Data? {
+        inbox.isEmpty ? nil : inbox.removeFirst()
     }
 
-    func close() {}
+    func close() async {}
 
     private func fail(_ message: String) throws {
         if firstMismatch == nil {
@@ -412,6 +354,16 @@ final class TranscriptTransport: Transport, @unchecked Sendable {
         }
         throw FreakError.transport(detail: message)
     }
+}
+
+/// Parse a vector transcript into Sendable entries and wrap them in a
+/// TranscriptTransport (the parse happens in the caller's region, so the
+/// non-Sendable JSON dictionaries never cross into the actor).
+func transcriptTransport(_ transcript: [[String: Any]]) -> TranscriptTransport {
+    TranscriptTransport(transcript.map {
+        TranscriptTransport.Entry(dir: $0["dir"] as! String,
+                                  frame: hexBytes($0["frame"] as! String))
+    })
 }
 
 // ------------------------------------------------------------ error helpers
@@ -448,36 +400,29 @@ func expectFreakErrorAsync(_ comment: String = "expected a FreakError",
     return nil
 }
 
-// --------------------------------------------------------------- LockedBox
+// ------------------------------------------------------------- progress
 
-/// Tiny thread-safe container for test bookkeeping crossing @Sendable
-/// closures (progress callbacks fired on the device queue).
-// @unchecked Sendable: NSLock-guarded state — the same pattern the §4 table
-// sanctions for CancelToken (test-only double).
-final class LockedBox<Value: Sendable>: @unchecked Sendable {
-    private let lock = NSLock()
-    private var stored: Value
-
-    init(_ value: Value) {
-        self.stored = value
+/// An unbounded ProgressReporter plus a collector task, so tests can assert
+/// every event (the public reporter's bufferingNewest(1) is a UI policy).
+/// (Qualified: Foundation on this SDK also declares a ProgressReporter.)
+func collectingReporter() -> (FreakCore.ProgressReporter, Task<[ProgressEvent], Never>) {
+    let reporter = FreakCore.ProgressReporter(bufferingPolicy: .unbounded)
+    let collector = Task {
+        var events: [ProgressEvent] = []
+        for await event in reporter.events {
+            events.append(event)
+        }
+        return events
     }
-
-    var value: Value {
-        get { lock.lock(); defer { lock.unlock() }; return stored }
-        set { lock.lock(); stored = newValue; lock.unlock() }
-    }
-
-    func withLock<T>(_ body: (inout Value) -> T) -> T {
-        lock.lock()
-        defer { lock.unlock() }
-        return body(&stored)
-    }
+    return (reporter, collector)
 }
 
+// --------------------------------------------------------------- misc
+
 /// Drain a SimulatedMicroFreak's outbox (the Python tests' recv_all).
-func recvAll(_ sim: SimulatedMicroFreak) throws -> [Data] {
+func recvAll(_ sim: SimulatedMicroFreak) async throws -> [Data] {
     var out: [Data] = []
-    while let raw = try sim.receive(timeout: 0.0) {
+    while let raw = try await sim.receive(timeout: 0.0) {
         out.append(raw)
     }
     return out

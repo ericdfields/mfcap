@@ -1,8 +1,9 @@
 {
-  "description": "The five hardware 0x52 name-reply payloads captured 2026-09-01 (fw 5.x), verbatim from tests/test_sysex.py, wrapped in the frame envelope with seq 0x00 and the realistic len byte 0x23 (the parser does not validate the len byte). 'expected' is decode_name_reply's output: embedded slot, decoded name (printable-filtered, split at first NUL, stripped), and the 9 meta bytes payload[3..11] verbatim (note slot 200 carries category 0x03/attribute 0x11, and slots >= 128 carry the reply-only 0x10 flag in meta[0]). All byte sequences are uppercase two-digit hex, space-separated ('F0 00 20 6B ...'). Regenerate: python3 tools/gen_vectors.py (from the repo root).",
+  "description": "0x52 name-reply payloads with their expected decode. The five 'hardware-2026-09-01' cases are captured payloads (fw 5.x), verbatim from tests/test_sysex.py; the six 'synthetic-factory_fresh(seed=0)' cases are rendered by the reference SimulatedMicroFreak for the boundary slots [0, 127, 128, 383, 384, 511] (bank edges 127/128 flip the reply-only 0x10 flag in meta[0]; 383/384 flip the payload[9] high-bank flag in meta[6]). All are wrapped in the frame envelope with seq 0x00 and the realistic len byte 0x23 (the parser does not validate the len byte). 'expected' is decode_name_reply's output: embedded slot, decoded name (printable-filtered, split at first NUL, stripped), and the 9 meta bytes payload[3..11] verbatim (note hardware slot 200 carries category 0x03/attribute 0x11). All byte sequences are uppercase two-digit hex, space-separated ('F0 00 20 6B ...'). Regenerate: python3 tools/gen_vectors.py (from the repo root).",
   "cases": [
     {
       "slot": 0,
+      "source": "hardware-2026-09-01",
       "payload": "00 00 00 08 00 00 00 00 00 00 00 33 49 6E 69 74 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00",
       "frame": "F0 00 20 6B 07 01 00 23 52 00 00 00 08 00 00 00 00 00 00 00 33 49 6E 69 74 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 F7",
       "expected": {
@@ -13,6 +14,7 @@
     },
     {
       "slot": 8,
+      "source": "hardware-2026-09-01",
       "payload": "00 08 00 00 00 00 00 00 08 00 02 32 4A 6A 6A 6A 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00",
       "frame": "F0 00 20 6B 07 01 00 23 52 00 08 00 00 00 00 00 00 08 00 02 32 4A 6A 6A 6A 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 F7",
       "expected": {
@@ -23,6 +25,7 @@
     },
     {
       "slot": 40,
+      "source": "hardware-2026-09-01",
       "payload": "00 28 00 00 00 00 00 00 28 00 05 33 54 72 61 70 70 65 64 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00",
       "frame": "F0 00 20 6B 07 01 00 23 52 00 28 00 00 00 00 00 00 28 00 05 33 54 72 61 70 70 65 64 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 F7",
       "expected": {
@@ -33,6 +36,7 @@
     },
     {
       "slot": 200,
+      "source": "hardware-2026-09-01",
       "payload": "01 48 00 10 00 00 00 00 48 00 03 11 50 6C 61 79 20 43 68 6F 72 64 73 00 00 00 00 00 00 00 00 00 00 00 00",
       "frame": "F0 00 20 6B 07 01 00 23 52 01 48 00 10 00 00 00 00 48 00 03 11 50 6C 61 79 20 43 68 6F 72 64 73 00 00 00 00 00 00 00 00 00 00 00 00 F7",
       "expected": {
@@ -43,6 +47,73 @@
     },
     {
       "slot": 511,
+      "source": "hardware-2026-09-01",
+      "payload": "03 7F 00 18 00 00 00 00 7F 01 00 33 49 6E 69 74 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00",
+      "frame": "F0 00 20 6B 07 01 00 23 52 03 7F 00 18 00 00 00 00 7F 01 00 33 49 6E 69 74 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 F7",
+      "expected": {
+        "slot": 511,
+        "name": "Init",
+        "meta": "18 00 00 00 00 7F 01 00 33"
+      }
+    },
+    {
+      "slot": 0,
+      "source": "synthetic-factory_fresh(seed=0)",
+      "payload": "00 00 00 00 00 00 00 00 00 00 00 32 50 61 74 63 68 20 30 30 30 00 00 00 00 00 00 00 00 00 00 00 00 00 00",
+      "frame": "F0 00 20 6B 07 01 00 23 52 00 00 00 00 00 00 00 00 00 00 00 32 50 61 74 63 68 20 30 30 30 00 00 00 00 00 00 00 00 00 00 00 00 00 00 F7",
+      "expected": {
+        "slot": 0,
+        "name": "Patch 000",
+        "meta": "00 00 00 00 00 00 00 00 32"
+      }
+    },
+    {
+      "slot": 127,
+      "source": "synthetic-factory_fresh(seed=0)",
+      "payload": "00 7F 00 0D 00 00 00 00 7F 00 07 33 50 61 74 63 68 20 31 32 37 00 00 00 00 00 00 00 00 00 00 00 00 00 00",
+      "frame": "F0 00 20 6B 07 01 00 23 52 00 7F 00 0D 00 00 00 00 7F 00 07 33 50 61 74 63 68 20 31 32 37 00 00 00 00 00 00 00 00 00 00 00 00 00 00 F7",
+      "expected": {
+        "slot": 127,
+        "name": "Patch 127",
+        "meta": "0D 00 00 00 00 7F 00 07 33"
+      }
+    },
+    {
+      "slot": 128,
+      "source": "synthetic-factory_fresh(seed=0)",
+      "payload": "01 00 00 10 00 00 00 00 00 00 08 32 50 61 74 63 68 20 31 32 38 00 00 00 00 00 00 00 00 00 00 00 00 00 00",
+      "frame": "F0 00 20 6B 07 01 00 23 52 01 00 00 10 00 00 00 00 00 00 08 32 50 61 74 63 68 20 31 32 38 00 00 00 00 00 00 00 00 00 00 00 00 00 00 F7",
+      "expected": {
+        "slot": 128,
+        "name": "Patch 128",
+        "meta": "10 00 00 00 00 00 00 08 32"
+      }
+    },
+    {
+      "slot": 383,
+      "source": "synthetic-factory_fresh(seed=0)",
+      "payload": "02 7F 00 18 00 00 00 00 7F 00 00 33 49 6E 69 74 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00",
+      "frame": "F0 00 20 6B 07 01 00 23 52 02 7F 00 18 00 00 00 00 7F 00 00 33 49 6E 69 74 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 F7",
+      "expected": {
+        "slot": 383,
+        "name": "Init",
+        "meta": "18 00 00 00 00 7F 00 00 33"
+      }
+    },
+    {
+      "slot": 384,
+      "source": "synthetic-factory_fresh(seed=0)",
+      "payload": "03 00 00 18 00 00 00 00 00 01 00 33 49 6E 69 74 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00",
+      "frame": "F0 00 20 6B 07 01 00 23 52 03 00 00 18 00 00 00 00 00 01 00 33 49 6E 69 74 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 F7",
+      "expected": {
+        "slot": 384,
+        "name": "Init",
+        "meta": "18 00 00 00 00 00 01 00 33"
+      }
+    },
+    {
+      "slot": 511,
+      "source": "synthetic-factory_fresh(seed=0)",
       "payload": "03 7F 00 18 00 00 00 00 7F 01 00 33 49 6E 69 74 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00",
       "frame": "F0 00 20 6B 07 01 00 23 52 03 7F 00 18 00 00 00 00 7F 01 00 33 49 6E 69 74 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 F7",
       "expected": {
