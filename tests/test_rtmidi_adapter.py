@@ -1,15 +1,18 @@
 """RtMidiTransport's pure, hardware-free logic: SysEx reassembly in
 _on_message (split frames, interleaved realtime/channel traffic, torn
-partials), close() cancelling the callback before closing ports, and
-_open_indices not leaking a half-opened port pair. No rtmidi involved —
-stub port objects stand in for the backend."""
+partials), close() cancelling the callback before closing ports,
+_open_indices not leaking a half-opened port pair, and device discovery
+(_find hint/exclude matching, find_microfreak pairing). No rtmidi involved —
+stub port objects and a stubbed port listing stand in for the backend."""
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from microfreak.errors import TransportError
-from microfreak.transports.rtmidi import RtMidiTransport
+from microfreak.transports import rtmidi as rt
+from microfreak.transports.rtmidi import (DEVICE_HINTS, RtMidiTransport,
+                                          _find, find_microfreak)
 
 
 class StubPort:
@@ -126,6 +129,40 @@ def main() -> None:
     assert ("close_port",) in mi.calls, \
         "the opened input port must be closed on the failure path"
     print("PASS  output-open failure closes the already-opened input port")
+
+    # --- discovery: _find hint matching, case-insensitive ------------------
+    ports = ["IAC Driver Bus 1", "Arturia MicroFreak", "mfcap MicroFreak"]
+    assert _find(ports, DEVICE_HINTS, "mfcap") == 1
+    assert _find(["MICROFREAK"], DEVICE_HINTS, "mfcap") == 0   # case folded
+    assert _find(["Micro Freak MIDI 1"], DEVICE_HINTS, "mfcap") == 0
+    assert _find(["KeyStep 37", "IAC Bus"], DEVICE_HINTS, "mfcap") is None
+    print("PASS  _find matches every DEVICE_HINT case-insensitively")
+
+    # the exclude filter skips mfcap's own virtual proxy port even though it
+    # matches the hints — the regression that would loop traffic back
+    assert _find(["mfcap MicroFreak Proxy"], DEVICE_HINTS, "mfcap") is None
+    assert _find(["mfcap MicroFreak Proxy", "Arturia MicroFreak"],
+                 DEVICE_HINTS, "mfcap") == 1
+    assert _find(["mfcap MicroFreak Proxy"], DEVICE_HINTS, "") == 0, \
+        "an empty exclude must disable the filter, not exclude everything"
+    print("PASS  exclude='mfcap' skips the virtual proxy port; '' disables it")
+
+    # --- find_microfreak pairs input+output; None when either is missing ---
+    real_list_ports = rt.list_ports
+    try:
+        rt.list_ports = lambda: {
+            "inputs": ["mfcap MicroFreak Proxy", "Arturia MicroFreak In"],
+            "outputs": ["Arturia MicroFreak Out"]}
+        assert find_microfreak() == ("Arturia MicroFreak In",
+                                     "Arturia MicroFreak Out")
+        rt.list_ports = lambda: {"inputs": ["Arturia MicroFreak In"],
+                                 "outputs": ["IAC Bus"]}
+        assert find_microfreak() is None, "no output match must yield None"
+        rt.list_ports = lambda: {"inputs": [], "outputs": []}
+        assert find_microfreak() is None
+    finally:
+        rt.list_ports = real_list_ports
+    print("PASS  find_microfreak pairs (in, out); None unless both sides match")
 
 
 if __name__ == "__main__":

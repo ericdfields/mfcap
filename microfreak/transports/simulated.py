@@ -11,7 +11,8 @@ Fidelity (asserted by tests/test_simulated_fidelity.py):
 1. Name reads reply with the full 35-byte long-0x52 payload: bank, pos,
    0x00, 5 opaque bytes, pos-again, the 0/1 slot-384 flag, category,
    attribute (printable values like 0x32/0x33 included, so header-leak
-   regressions are caught), then the NUL-padded 23-byte name.
+   regressions are caught), then the NUL-padded 23-byte name. The reply
+   echoes its request's seq, as every captured reply does.
 2. reply_lag=True (the default, so every offline test exercises the
    defense): the reply to name-read N is held and emitted only when
    name-read N+1 arrives; the first name read yields nothing. The held

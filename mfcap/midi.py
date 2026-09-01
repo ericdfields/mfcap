@@ -19,7 +19,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Callable, List, Optional
 
-from microfreak.transports.rtmidi import DEVICE_HINTS
+from microfreak.transports.rtmidi import DEVICE_HINTS, _find
 
 from . import sysex as sx
 
@@ -49,13 +49,9 @@ def list_ports() -> dict:
 
 
 def find_port(names: List[str], hints=DEVICE_HINTS, exclude: str = "") -> Optional[int]:
-    for i, name in enumerate(names):
-        low = name.lower()
-        if exclude and exclude.lower() in low:
-            continue
-        if any(h in low for h in hints):
-            return i
-    return None
+    """Hint/exclude port matching. One implementation for the whole repo:
+    delegates to the core adapter's matcher instead of duplicating it."""
+    return _find(names, hints, exclude)
 
 
 @dataclass
@@ -155,8 +151,11 @@ class Reader:
         self.max_chunks = max_chunks
 
     def _next_seq(self) -> int:
-        self.seq = (self.seq + 1) % 0x80
-        return self.seq or 1
+        # 1..127 without repeats, same as microfreak.Session._next_seq.
+        # (The old "(seq + 1) % 0x80 or 1" emitted seq 1 twice at the wrap
+        # because the substituted 1 was never stored back.)
+        self.seq = self.seq % 127 + 1
+        return self.seq
 
     def name(self, slot: int, timeout: float = 1.0) -> Optional[str]:
         # The 0x52 reply carries the slot it describes in its first two bytes.

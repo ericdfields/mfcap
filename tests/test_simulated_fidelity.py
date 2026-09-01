@@ -40,6 +40,7 @@ def main() -> None:
     assert len(replies) == 1
     f = p.parse(replies[0])
     assert f.cmd == p.CMD_NAME and f.length == 0x23
+    assert f.seq == 1, "name reply echoes its request's seq (every capture)"
     assert len(f.data) == p.NAME_PAYLOAD_LEN == 35
     assert f.data[0] == 1 and f.data[1] == 72 and f.data[2] == 0x00  # bank,pos,0
     assert f.data[8] == 72                       # pos again
@@ -65,6 +66,8 @@ def main() -> None:
     assert len(lagged) == 1
     lf = p.parse(lagged[0])
     assert p.decode_name_reply(lf).slot == 5, "reply is for the PREVIOUS request"
+    assert lf.seq == 1, "the lagged reply carries ITS OWN request's seq (1), " \
+                        "not the releasing request's (2)"
     print("PASS  2. lag: first read silent; reply N arrives with request N+1")
 
     # ...and the Session's drain-retry-match loop defeats it for every slot

@@ -228,9 +228,11 @@ class Session:
         self.transport.send(open_dump_req(self._next_seq(), slot))
         chunks: List[protocol.Frame] = []
         while True:
-            # collect anything already delivered before pulling again
+            # collect anything already delivered before pulling again; the
+            # len bound keeps a runaway device (streaming 0x16 forever with
+            # no terminator) from spinning this loop unboundedly
             got_last = False
-            while True:
+            while len(chunks) < CHUNK_COUNT:
                 raw = self.transport.receive(0.0)
                 if raw is None:
                     break

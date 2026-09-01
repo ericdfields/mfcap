@@ -146,6 +146,9 @@ def main() -> None:
     assert p.parse(b"\x90\x40\x40") is None                       # note-on
     assert p.parse(b"\xF0\x7E\x00\x06\x01\xF7") is None           # generic SysEx
     assert p.parse(hx("F0 00 20 6B 06 01 00 00 15 F7")) is None   # wrong device id
+    # wrong prefix byte 5 (another Arturia sub-protocol under device id 0x07)
+    # — phase-0 Frame.is_microfreak matched all 6 prefix bytes; so must parse
+    assert p.parse(hx("F0 00 20 6B 07 02 00 00 15 F7")) is None
     assert p.parse(p.go_frame()[:-1]) is None                     # missing F7
     print("PASS  parse returns None for non-MicroFreak traffic")
 

@@ -93,6 +93,17 @@ def main() -> None:
     assert sim.faults == [], sim.faults
     print("PASS  name reads stay correctly labeled with dumps interleaved")
 
+    # ---- lag OFF still works (no spurious retries needed) -----------------
+    sim = SimulatedMicroFreak.factory_fresh(reply_lag=False)
+    sess = make_session(sim)
+    for slot in (0, 9, 200, 511):
+        info = sess.read_name(slot)
+        assert info.slot == slot and info.name == sim.peek(slot).name
+    reads = [p.parse(raw) for d, raw in sim.wire_log if d == "out"]
+    assert len([f for f in reads if f.cmd == p.CMD_OPEN]) == 4, \
+        "an unlagged device must need exactly one request per read"
+    print("PASS  unlagged sim: one request per read, same correct labels")
+
 
 if __name__ == "__main__":
     main()

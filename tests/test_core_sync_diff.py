@@ -142,6 +142,16 @@ def run(work: Path) -> None:
     assert st5[0] == SlotStatus.IN_SYNC             # sha equality unaffected
     print("PASS  duplicate threshold flows through the diff")
 
+    # ---- executing the diff converges it: write the DIFFERS entry ---------
+    row1 = next(r for r in d.slots if r.slot == 1)
+    dev.write(1, lib.get(row1.library.id))
+    snap2 = dev.snapshot(slots=SLOTS)
+    d2 = diff(snap2, lib)
+    st2 = {row.slot: row.status for row in d2.slots}
+    assert st2[1] == SlotStatus.IN_SYNC
+    assert not d2.by_status(SlotStatus.DIFFERS)
+    print("PASS  after writing the changed preset, the diff converges to IN_SYNC")
+
 
 if __name__ == "__main__":
     main()

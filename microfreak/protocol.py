@@ -178,6 +178,13 @@ def chunk_frames(blob: bytes) -> List[bytes]:
     """
     if len(blob) != BLOB_SIZE:
         raise BlobSizeError(BLOB_SIZE, len(blob))
+    bad = next((i for i, b in enumerate(blob) if b > 0x7F), None)
+    if bad is not None:
+        # frame() masks to 7 bits, so letting this through would silently
+        # alter the content on the wire; reject the input instead
+        raise ProtocolError(
+            f"blob byte {bad} is 0x{blob[bad]:02X}: SysEx content must be "
+            "7-bit clean")
     out: List[bytes] = []
     for i in range(CHUNK_COUNT):
         piece = blob[i * CHUNK_SIZE:(i + 1) * CHUNK_SIZE]

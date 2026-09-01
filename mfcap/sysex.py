@@ -10,7 +10,6 @@ harness adds on top:
   rows are built from;
 - list-of-int frame builders (what rtmidi's send_message and the recorded
   hex rows historically used);
-- `decode_param`, a phase-0 analysis helper the librarian core does not need;
 - `assemble` without the 4672-byte check - gate/replay tooling assembles
   partial and simulated dumps, while the librarian path
   (microfreak.protocol.assemble_blob) enforces the real blob size.
@@ -43,9 +42,6 @@ CMD_NAMES = {
     0x52: "name",
 }
 
-# Resolved 2026-09-01: the gate verified the <len> byte for every frame type
-# we send (docs/write-protocol.md). The name survives for old callers/notes.
-LEN_IS_UNVERIFIED = False
 SLOTS_PER_BANK = _p.SLOTS_PER_BANK
 
 # Name position inside the long 0x52 payload (see microfreak.protocol).
@@ -116,21 +112,6 @@ def decode_name(f: Frame) -> str:
     tests/test_sysex.py; the core asserts parity with those same fixtures).
     """
     return _p._decode_name(bytes(f.data))
-
-
-def decode_param(msb: int, mid: int, lsb: int, negative: bool = False) -> float:
-    """15-bit value -> the 0-100 the MicroFreak screen shows.
-
-    Phase-0 analysis helper; the librarian core treats blobs as opaque and
-    has no use for it. The published notes carry the sign outside these three
-    bytes, so the caller passes it in. Do not infer sign from bit 14 until a
-    capture confirms it.
-    """
-    raw = (msb << 8) + (mid << 7) + lsb
-    if negative:
-        raw = (((~raw) & 0x7FFF) + 1)
-        raw = -raw
-    return round(raw * 1000 / 32768) / 10
 
 
 def assemble(chunks: Iterable[Frame]) -> bytes:

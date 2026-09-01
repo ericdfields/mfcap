@@ -145,11 +145,16 @@ def cmd_backup(args) -> int:
 
     mfk = microfreak.MicroFreak(transport, slots=args.slots)
     try:
-        mfk.backup(out, progress=progress)
+        # resume by default: the advertised recovery path is "fix the
+        # connection and re-run", so a re-run must skip the slots already on
+        # disk instead of repeating a ~3.5-minute full pass. --fresh forces
+        # every slot to be re-read into the same directory.
+        mfk.backup(out, resume=not args.fresh, progress=progress)
     except MicroFreakError as exc:
         print()
         op.warn(f"backup stopped: {exc}")
-        op.info("slots read so far are on disk; fix the connection and re-run")
+        op.info("slots read so far are on disk; fix the connection and re-run "
+                "(already-saved slots are skipped; use --fresh to re-read all)")
         return 1
     finally:
         mfk.close()
@@ -418,6 +423,9 @@ def main(argv=None) -> int:
 
     b = sub.add_parser("backup")
     b.add_argument("--slots", type=int, default=512)
+    b.add_argument("--fresh", action="store_true",
+                   help="re-read every slot even if already saved (default: "
+                        "resume, skipping slots already on disk)")
     b.set_defaults(fn=cmd_backup)
 
     sub.add_parser("calibrate").set_defaults(fn=cmd_calibrate)
