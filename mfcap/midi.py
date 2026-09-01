@@ -19,7 +19,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Callable, List, Optional
 
-from microfreak.transports.rtmidi import DEVICE_HINTS, _find
+from microfreak.transports.rtmidi import DEVICE_HINTS, find_port as _core_find_port
 
 from . import sysex as sx
 
@@ -51,7 +51,7 @@ def list_ports() -> dict:
 def find_port(names: List[str], hints=DEVICE_HINTS, exclude: str = "") -> Optional[int]:
     """Hint/exclude port matching. One implementation for the whole repo:
     delegates to the core adapter's matcher instead of duplicating it."""
-    return _find(names, hints, exclude)
+    return _core_find_port(names, hints, exclude)
 
 
 @dataclass

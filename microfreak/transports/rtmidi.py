@@ -50,7 +50,7 @@ def list_ports() -> Dict[str, List[str]]:
         raise TransportError(f"port enumeration failed: {e}") from e
 
 
-def _find(names: Sequence[str], hints: Sequence[str],
+def find_port(names: Sequence[str], hints: Sequence[str],
           exclude: str) -> Optional[int]:
     for i, name in enumerate(names):
         low = name.lower()
@@ -65,8 +65,8 @@ def find_microfreak(hints: Sequence[str] = DEVICE_HINTS,
                     exclude: str = "mfcap") -> Optional[Tuple[str, str]]:
     """(input name, output name) of the first matching device, or None."""
     ports = list_ports()
-    i = _find(ports["inputs"], hints, exclude)
-    o = _find(ports["outputs"], hints, exclude)
+    i = find_port(ports["inputs"], hints, exclude)
+    o = find_port(ports["outputs"], hints, exclude)
     if i is None or o is None:
         return None
     return ports["inputs"][i], ports["outputs"][o]
@@ -96,8 +96,8 @@ class RtMidiTransport:
             ins, outs = mi.get_ports(), mo.get_ports()
         except Exception as e:
             raise TransportError(f"port enumeration failed: {e}") from e
-        i = _find(ins, hints, exclude)
-        o = _find(outs, hints, exclude)
+        i = find_port(ins, hints, exclude)
+        o = find_port(outs, hints, exclude)
         if i is None or o is None:
             raise DeviceNotFoundError(ins, outs)
         return cls._open_indices(mi, mo, i, o, ins[i], outs[o])
