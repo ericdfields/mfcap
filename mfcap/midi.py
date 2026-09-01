@@ -154,11 +154,18 @@ class Reader:
         return self.seq or 1
 
     def name(self, slot: int, timeout: float = 1.0) -> Optional[str]:
-        replies = self.dev.ask(sx.read_name(self._next_seq(), slot),
-                               want={sx.CMD_NAME}, timeout=timeout)
-        for f in replies:
-            if f.cmd == sx.CMD_NAME:
-                return sx.decode_name(f)
+        # The 0x52 reply carries the slot it describes in its first two bytes.
+        # Under rapid back-to-back reads the device's replies can lag one
+        # request behind, so accepting any 0x52 frame mis-labels every slot
+        # from then on. Only accept a reply that names the slot we asked for.
+        bank, pos = sx.addr(slot)
+        for _ in range(3):
+            replies = self.dev.ask(sx.read_name(self._next_seq(), slot),
+                                   want={sx.CMD_NAME}, timeout=timeout)
+            for f in replies:
+                if (f.cmd == sx.CMD_NAME and len(f.data) >= 2
+                        and f.data[0] == bank and f.data[1] == pos):
+                    return sx.decode_name(f)
         return None
 
     def preset(self, slot: int, timeout: float = 1.5) -> Optional[bytes]:

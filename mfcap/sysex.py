@@ -106,9 +106,22 @@ def parse(raw: bytes | List[int], direction: str = "?", t: float = 0.0) -> Optio
                  direction=direction, t=t)
 
 
+# Probed live against firmware 5.x hardware (2026-09-01), seven slots across
+# all four banks. The 0x52 reply payload is 35 bytes:
+#
+#   [0] bank  [1] pos  [2] 00  [3..7] unknown  [8] pos again
+#   [9] unknown (0 for slots <384, 1 after)  [10] unknown  [11] attribute
+#   [12..] name, NUL padded
+#
+# Bytes 1, 8 and 11 are often printable ASCII, which is why decoding the whole
+# payload leaked the slot number (doubled) and a stray character into names.
+NAME_OFFSET = 12
+
+
 def decode_name(f: Frame) -> str:
     """Preset name out of a 0x52 reply. Printable ASCII, trimmed."""
-    chars = [chr(c) for c in f.data if 0x20 <= c < 0x7F]
+    body = f.data[NAME_OFFSET:].split(b"\x00")[0]
+    chars = [chr(c) for c in body if 0x20 <= c < 0x7F]
     return "".join(chars).strip()
 
 
