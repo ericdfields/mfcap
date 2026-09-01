@@ -1,0 +1,586 @@
+{
+  "description": "Reply-lag scenarios from SimulatedMicroFreak with reply_lag=True (the default): the reply to name-read N is held and emitted only when name-read N+1 arrives, rendered from device state at emission time. Case 1 shows the raw hazard on the wire; case 2 is a full Session transcript over a scrambled slot order (revisits included) proving embedded-address matching never mislabels. Session driven by a deterministic FakeClock (sleep advances time by max(dt, 1e-4)); name_timeout 1.0, poll sleep 0.002. All byte sequences are uppercase two-digit hex, space-separated ('F0 00 20 6B ...'). Regenerate: python3 tools/gen_vectors.py (from the repo root).",
+  "cases": [
+    {
+      "kind": "raw_wire_lag",
+      "requests": [
+        {
+          "seq": 1,
+          "slot": 5
+        },
+        {
+          "seq": 2,
+          "slot": 9
+        },
+        {
+          "seq": 3,
+          "slot": 12
+        }
+      ],
+      "reply_after_each_request": [
+        null,
+        {
+          "reply_slot": 5,
+          "name": "Patch 005",
+          "reply_seq": 1
+        },
+        {
+          "reply_slot": 9,
+          "name": "Patch 009",
+          "reply_seq": 2
+        }
+      ],
+      "transcript": [
+        {
+          "dir": "out",
+          "label": "read_name_req",
+          "seq": 1,
+          "frame": "F0 00 20 6B 07 01 01 03 19 00 05 00 F7"
+        },
+        {
+          "dir": "out",
+          "label": "read_name_req",
+          "seq": 2,
+          "frame": "F0 00 20 6B 07 01 02 03 19 00 09 00 F7"
+        },
+        {
+          "dir": "in",
+          "label": "name_reply",
+          "seq": 1,
+          "frame": "F0 00 20 6B 07 01 01 23 52 00 05 00 0F 00 00 00 00 05 00 05 33 50 61 74 63 68 20 30 30 35 00 00 00 00 00 00 00 00 00 00 00 00 00 00 F7",
+          "slot": 5,
+          "name": "Patch 005"
+        },
+        {
+          "dir": "out",
+          "label": "read_name_req",
+          "seq": 3,
+          "frame": "F0 00 20 6B 07 01 03 03 19 00 0C 00 F7"
+        },
+        {
+          "dir": "in",
+          "label": "name_reply",
+          "seq": 2,
+          "frame": "F0 00 20 6B 07 01 02 23 52 00 09 00 0B 00 00 00 00 09 00 09 33 50 61 74 63 68 20 30 30 39 00 00 00 00 00 00 00 00 00 00 00 00 00 00 F7",
+          "slot": 9,
+          "name": "Patch 009"
+        }
+      ],
+      "note": "reply N is held until request N+1 arrives; the released reply echoes ITS OWN request's seq and embedded address \u2014 a naive first-reply-for-latest-request pairing mislabels slot 9 with slot 5's data"
+    },
+    {
+      "kind": "session_scrambled_order",
+      "read_order": [
+        0,
+        511,
+        7,
+        384,
+        7,
+        200,
+        383,
+        1,
+        400,
+        12,
+        0,
+        269,
+        500,
+        268,
+        3
+      ],
+      "results": [
+        {
+          "requested_slot": 0,
+          "name": "Patch 000",
+          "meta": "00 00 00 00 00 00 00 00 32"
+        },
+        {
+          "requested_slot": 511,
+          "name": "Init",
+          "meta": "18 00 00 00 00 7F 01 00 33"
+        },
+        {
+          "requested_slot": 7,
+          "name": "Patch 007",
+          "meta": "05 00 00 00 00 07 00 07 33"
+        },
+        {
+          "requested_slot": 384,
+          "name": "Init",
+          "meta": "18 00 00 00 00 00 01 00 33"
+        },
+        {
+          "requested_slot": 7,
+          "name": "Patch 007",
+          "meta": "05 00 00 00 00 07 00 07 33"
+        },
+        {
+          "requested_slot": 200,
+          "name": "Patch 200",
+          "meta": "18 00 00 00 00 48 00 08 32"
+        },
+        {
+          "requested_slot": 383,
+          "name": "Init",
+          "meta": "18 00 00 00 00 7F 00 00 33"
+        },
+        {
+          "requested_slot": 1,
+          "name": "Patch 001",
+          "meta": "03 00 00 00 00 01 00 01 33"
+        },
+        {
+          "requested_slot": 400,
+          "name": "Init",
+          "meta": "18 00 00 00 00 10 01 00 33"
+        },
+        {
+          "requested_slot": 12,
+          "name": "Patch 012",
+          "meta": "04 00 00 00 00 0C 00 00 32"
+        },
+        {
+          "requested_slot": 0,
+          "name": "Patch 000",
+          "meta": "00 00 00 00 00 00 00 00 32"
+        },
+        {
+          "requested_slot": 269,
+          "name": "Init",
+          "meta": "18 00 00 00 00 0D 00 00 33"
+        },
+        {
+          "requested_slot": 500,
+          "name": "Init",
+          "meta": "18 00 00 00 00 74 01 00 33"
+        },
+        {
+          "requested_slot": 268,
+          "name": "Init",
+          "meta": "18 00 00 00 00 0C 00 00 33"
+        },
+        {
+          "requested_slot": 3,
+          "name": "Patch 003",
+          "meta": "09 00 00 00 00 03 00 03 33"
+        }
+      ],
+      "reads": 15,
+      "name_requests_sent": 30,
+      "transcript": [
+        {
+          "dir": "out",
+          "label": "read_name_req",
+          "seq": 1,
+          "frame": "F0 00 20 6B 07 01 01 03 19 00 00 00 F7"
+        },
+        {
+          "dir": "out",
+          "label": "read_name_req",
+          "seq": 1,
+          "frame": "F0 00 20 6B 07 01 01 03 19 00 00 00 F7"
+        },
+        {
+          "dir": "in",
+          "label": "name_reply",
+          "seq": 1,
+          "frame": "F0 00 20 6B 07 01 01 23 52 00 00 00 00 00 00 00 00 00 00 00 32 50 61 74 63 68 20 30 30 30 00 00 00 00 00 00 00 00 00 00 00 00 00 00 F7",
+          "slot": 0,
+          "name": "Patch 000"
+        },
+        {
+          "dir": "out",
+          "label": "read_name_req",
+          "seq": 2,
+          "frame": "F0 00 20 6B 07 01 02 03 19 03 7F 00 F7"
+        },
+        {
+          "dir": "in",
+          "label": "name_reply",
+          "seq": 1,
+          "frame": "F0 00 20 6B 07 01 01 23 52 00 00 00 00 00 00 00 00 00 00 00 32 50 61 74 63 68 20 30 30 30 00 00 00 00 00 00 00 00 00 00 00 00 00 00 F7",
+          "slot": 0,
+          "name": "Patch 000"
+        },
+        {
+          "dir": "out",
+          "label": "read_name_req",
+          "seq": 2,
+          "frame": "F0 00 20 6B 07 01 02 03 19 03 7F 00 F7"
+        },
+        {
+          "dir": "in",
+          "label": "name_reply",
+          "seq": 2,
+          "frame": "F0 00 20 6B 07 01 02 23 52 03 7F 00 18 00 00 00 00 7F 01 00 33 49 6E 69 74 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 F7",
+          "slot": 511,
+          "name": "Init"
+        },
+        {
+          "dir": "out",
+          "label": "read_name_req",
+          "seq": 3,
+          "frame": "F0 00 20 6B 07 01 03 03 19 00 07 00 F7"
+        },
+        {
+          "dir": "in",
+          "label": "name_reply",
+          "seq": 2,
+          "frame": "F0 00 20 6B 07 01 02 23 52 03 7F 00 18 00 00 00 00 7F 01 00 33 49 6E 69 74 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 F7",
+          "slot": 511,
+          "name": "Init"
+        },
+        {
+          "dir": "out",
+          "label": "read_name_req",
+          "seq": 3,
+          "frame": "F0 00 20 6B 07 01 03 03 19 00 07 00 F7"
+        },
+        {
+          "dir": "in",
+          "label": "name_reply",
+          "seq": 3,
+          "frame": "F0 00 20 6B 07 01 03 23 52 00 07 00 05 00 00 00 00 07 00 07 33 50 61 74 63 68 20 30 30 37 00 00 00 00 00 00 00 00 00 00 00 00 00 00 F7",
+          "slot": 7,
+          "name": "Patch 007"
+        },
+        {
+          "dir": "out",
+          "label": "read_name_req",
+          "seq": 4,
+          "frame": "F0 00 20 6B 07 01 04 03 19 03 00 00 F7"
+        },
+        {
+          "dir": "in",
+          "label": "name_reply",
+          "seq": 3,
+          "frame": "F0 00 20 6B 07 01 03 23 52 00 07 00 05 00 00 00 00 07 00 07 33 50 61 74 63 68 20 30 30 37 00 00 00 00 00 00 00 00 00 00 00 00 00 00 F7",
+          "slot": 7,
+          "name": "Patch 007"
+        },
+        {
+          "dir": "out",
+          "label": "read_name_req",
+          "seq": 4,
+          "frame": "F0 00 20 6B 07 01 04 03 19 03 00 00 F7"
+        },
+        {
+          "dir": "in",
+          "label": "name_reply",
+          "seq": 4,
+          "frame": "F0 00 20 6B 07 01 04 23 52 03 00 00 18 00 00 00 00 00 01 00 33 49 6E 69 74 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 F7",
+          "slot": 384,
+          "name": "Init"
+        },
+        {
+          "dir": "out",
+          "label": "read_name_req",
+          "seq": 5,
+          "frame": "F0 00 20 6B 07 01 05 03 19 00 07 00 F7"
+        },
+        {
+          "dir": "in",
+          "label": "name_reply",
+          "seq": 4,
+          "frame": "F0 00 20 6B 07 01 04 23 52 03 00 00 18 00 00 00 00 00 01 00 33 49 6E 69 74 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 F7",
+          "slot": 384,
+          "name": "Init"
+        },
+        {
+          "dir": "out",
+          "label": "read_name_req",
+          "seq": 5,
+          "frame": "F0 00 20 6B 07 01 05 03 19 00 07 00 F7"
+        },
+        {
+          "dir": "in",
+          "label": "name_reply",
+          "seq": 5,
+          "frame": "F0 00 20 6B 07 01 05 23 52 00 07 00 05 00 00 00 00 07 00 07 33 50 61 74 63 68 20 30 30 37 00 00 00 00 00 00 00 00 00 00 00 00 00 00 F7",
+          "slot": 7,
+          "name": "Patch 007"
+        },
+        {
+          "dir": "out",
+          "label": "read_name_req",
+          "seq": 6,
+          "frame": "F0 00 20 6B 07 01 06 03 19 01 48 00 F7"
+        },
+        {
+          "dir": "in",
+          "label": "name_reply",
+          "seq": 5,
+          "frame": "F0 00 20 6B 07 01 05 23 52 00 07 00 05 00 00 00 00 07 00 07 33 50 61 74 63 68 20 30 30 37 00 00 00 00 00 00 00 00 00 00 00 00 00 00 F7",
+          "slot": 7,
+          "name": "Patch 007"
+        },
+        {
+          "dir": "out",
+          "label": "read_name_req",
+          "seq": 6,
+          "frame": "F0 00 20 6B 07 01 06 03 19 01 48 00 F7"
+        },
+        {
+          "dir": "in",
+          "label": "name_reply",
+          "seq": 6,
+          "frame": "F0 00 20 6B 07 01 06 23 52 01 48 00 18 00 00 00 00 48 00 08 32 50 61 74 63 68 20 32 30 30 00 00 00 00 00 00 00 00 00 00 00 00 00 00 F7",
+          "slot": 200,
+          "name": "Patch 200"
+        },
+        {
+          "dir": "out",
+          "label": "read_name_req",
+          "seq": 7,
+          "frame": "F0 00 20 6B 07 01 07 03 19 02 7F 00 F7"
+        },
+        {
+          "dir": "in",
+          "label": "name_reply",
+          "seq": 6,
+          "frame": "F0 00 20 6B 07 01 06 23 52 01 48 00 18 00 00 00 00 48 00 08 32 50 61 74 63 68 20 32 30 30 00 00 00 00 00 00 00 00 00 00 00 00 00 00 F7",
+          "slot": 200,
+          "name": "Patch 200"
+        },
+        {
+          "dir": "out",
+          "label": "read_name_req",
+          "seq": 7,
+          "frame": "F0 00 20 6B 07 01 07 03 19 02 7F 00 F7"
+        },
+        {
+          "dir": "in",
+          "label": "name_reply",
+          "seq": 7,
+          "frame": "F0 00 20 6B 07 01 07 23 52 02 7F 00 18 00 00 00 00 7F 00 00 33 49 6E 69 74 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 F7",
+          "slot": 383,
+          "name": "Init"
+        },
+        {
+          "dir": "out",
+          "label": "read_name_req",
+          "seq": 8,
+          "frame": "F0 00 20 6B 07 01 08 03 19 00 01 00 F7"
+        },
+        {
+          "dir": "in",
+          "label": "name_reply",
+          "seq": 7,
+          "frame": "F0 00 20 6B 07 01 07 23 52 02 7F 00 18 00 00 00 00 7F 00 00 33 49 6E 69 74 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 F7",
+          "slot": 383,
+          "name": "Init"
+        },
+        {
+          "dir": "out",
+          "label": "read_name_req",
+          "seq": 8,
+          "frame": "F0 00 20 6B 07 01 08 03 19 00 01 00 F7"
+        },
+        {
+          "dir": "in",
+          "label": "name_reply",
+          "seq": 8,
+          "frame": "F0 00 20 6B 07 01 08 23 52 00 01 00 03 00 00 00 00 01 00 01 33 50 61 74 63 68 20 30 30 31 00 00 00 00 00 00 00 00 00 00 00 00 00 00 F7",
+          "slot": 1,
+          "name": "Patch 001"
+        },
+        {
+          "dir": "out",
+          "label": "read_name_req",
+          "seq": 9,
+          "frame": "F0 00 20 6B 07 01 09 03 19 03 10 00 F7"
+        },
+        {
+          "dir": "in",
+          "label": "name_reply",
+          "seq": 8,
+          "frame": "F0 00 20 6B 07 01 08 23 52 00 01 00 03 00 00 00 00 01 00 01 33 50 61 74 63 68 20 30 30 31 00 00 00 00 00 00 00 00 00 00 00 00 00 00 F7",
+          "slot": 1,
+          "name": "Patch 001"
+        },
+        {
+          "dir": "out",
+          "label": "read_name_req",
+          "seq": 9,
+          "frame": "F0 00 20 6B 07 01 09 03 19 03 10 00 F7"
+        },
+        {
+          "dir": "in",
+          "label": "name_reply",
+          "seq": 9,
+          "frame": "F0 00 20 6B 07 01 09 23 52 03 10 00 18 00 00 00 00 10 01 00 33 49 6E 69 74 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 F7",
+          "slot": 400,
+          "name": "Init"
+        },
+        {
+          "dir": "out",
+          "label": "read_name_req",
+          "seq": 10,
+          "frame": "F0 00 20 6B 07 01 0A 03 19 00 0C 00 F7"
+        },
+        {
+          "dir": "in",
+          "label": "name_reply",
+          "seq": 9,
+          "frame": "F0 00 20 6B 07 01 09 23 52 03 10 00 18 00 00 00 00 10 01 00 33 49 6E 69 74 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 F7",
+          "slot": 400,
+          "name": "Init"
+        },
+        {
+          "dir": "out",
+          "label": "read_name_req",
+          "seq": 10,
+          "frame": "F0 00 20 6B 07 01 0A 03 19 00 0C 00 F7"
+        },
+        {
+          "dir": "in",
+          "label": "name_reply",
+          "seq": 10,
+          "frame": "F0 00 20 6B 07 01 0A 23 52 00 0C 00 04 00 00 00 00 0C 00 00 32 50 61 74 63 68 20 30 31 32 00 00 00 00 00 00 00 00 00 00 00 00 00 00 F7",
+          "slot": 12,
+          "name": "Patch 012"
+        },
+        {
+          "dir": "out",
+          "label": "read_name_req",
+          "seq": 11,
+          "frame": "F0 00 20 6B 07 01 0B 03 19 00 00 00 F7"
+        },
+        {
+          "dir": "in",
+          "label": "name_reply",
+          "seq": 10,
+          "frame": "F0 00 20 6B 07 01 0A 23 52 00 0C 00 04 00 00 00 00 0C 00 00 32 50 61 74 63 68 20 30 31 32 00 00 00 00 00 00 00 00 00 00 00 00 00 00 F7",
+          "slot": 12,
+          "name": "Patch 012"
+        },
+        {
+          "dir": "out",
+          "label": "read_name_req",
+          "seq": 11,
+          "frame": "F0 00 20 6B 07 01 0B 03 19 00 00 00 F7"
+        },
+        {
+          "dir": "in",
+          "label": "name_reply",
+          "seq": 11,
+          "frame": "F0 00 20 6B 07 01 0B 23 52 00 00 00 00 00 00 00 00 00 00 00 32 50 61 74 63 68 20 30 30 30 00 00 00 00 00 00 00 00 00 00 00 00 00 00 F7",
+          "slot": 0,
+          "name": "Patch 000"
+        },
+        {
+          "dir": "out",
+          "label": "read_name_req",
+          "seq": 12,
+          "frame": "F0 00 20 6B 07 01 0C 03 19 02 0D 00 F7"
+        },
+        {
+          "dir": "in",
+          "label": "name_reply",
+          "seq": 11,
+          "frame": "F0 00 20 6B 07 01 0B 23 52 00 00 00 00 00 00 00 00 00 00 00 32 50 61 74 63 68 20 30 30 30 00 00 00 00 00 00 00 00 00 00 00 00 00 00 F7",
+          "slot": 0,
+          "name": "Patch 000"
+        },
+        {
+          "dir": "out",
+          "label": "read_name_req",
+          "seq": 12,
+          "frame": "F0 00 20 6B 07 01 0C 03 19 02 0D 00 F7"
+        },
+        {
+          "dir": "in",
+          "label": "name_reply",
+          "seq": 12,
+          "frame": "F0 00 20 6B 07 01 0C 23 52 02 0D 00 18 00 00 00 00 0D 00 00 33 49 6E 69 74 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 F7",
+          "slot": 269,
+          "name": "Init"
+        },
+        {
+          "dir": "out",
+          "label": "read_name_req",
+          "seq": 13,
+          "frame": "F0 00 20 6B 07 01 0D 03 19 03 74 00 F7"
+        },
+        {
+          "dir": "in",
+          "label": "name_reply",
+          "seq": 12,
+          "frame": "F0 00 20 6B 07 01 0C 23 52 02 0D 00 18 00 00 00 00 0D 00 00 33 49 6E 69 74 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 F7",
+          "slot": 269,
+          "name": "Init"
+        },
+        {
+          "dir": "out",
+          "label": "read_name_req",
+          "seq": 13,
+          "frame": "F0 00 20 6B 07 01 0D 03 19 03 74 00 F7"
+        },
+        {
+          "dir": "in",
+          "label": "name_reply",
+          "seq": 13,
+          "frame": "F0 00 20 6B 07 01 0D 23 52 03 74 00 18 00 00 00 00 74 01 00 33 49 6E 69 74 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 F7",
+          "slot": 500,
+          "name": "Init"
+        },
+        {
+          "dir": "out",
+          "label": "read_name_req",
+          "seq": 14,
+          "frame": "F0 00 20 6B 07 01 0E 03 19 02 0C 00 F7"
+        },
+        {
+          "dir": "in",
+          "label": "name_reply",
+          "seq": 13,
+          "frame": "F0 00 20 6B 07 01 0D 23 52 03 74 00 18 00 00 00 00 74 01 00 33 49 6E 69 74 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 F7",
+          "slot": 500,
+          "name": "Init"
+        },
+        {
+          "dir": "out",
+          "label": "read_name_req",
+          "seq": 14,
+          "frame": "F0 00 20 6B 07 01 0E 03 19 02 0C 00 F7"
+        },
+        {
+          "dir": "in",
+          "label": "name_reply",
+          "seq": 14,
+          "frame": "F0 00 20 6B 07 01 0E 23 52 02 0C 00 18 00 00 00 00 0C 00 00 33 49 6E 69 74 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 F7",
+          "slot": 268,
+          "name": "Init"
+        },
+        {
+          "dir": "out",
+          "label": "read_name_req",
+          "seq": 15,
+          "frame": "F0 00 20 6B 07 01 0F 03 19 00 03 00 F7"
+        },
+        {
+          "dir": "in",
+          "label": "name_reply",
+          "seq": 14,
+          "frame": "F0 00 20 6B 07 01 0E 23 52 02 0C 00 18 00 00 00 00 0C 00 00 33 49 6E 69 74 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 F7",
+          "slot": 268,
+          "name": "Init"
+        },
+        {
+          "dir": "out",
+          "label": "read_name_req",
+          "seq": 15,
+          "frame": "F0 00 20 6B 07 01 0F 03 19 00 03 00 F7"
+        },
+        {
+          "dir": "in",
+          "label": "name_reply",
+          "seq": 15,
+          "frame": "F0 00 20 6B 07 01 0F 23 52 00 03 00 09 00 00 00 00 03 00 03 33 50 61 74 63 68 20 30 30 33 00 00 00 00 00 00 00 00 00 00 00 00 00 00 F7",
+          "slot": 3,
+          "name": "Patch 003"
+        }
+      ],
+      "note": "scrambled slots with revisits over a lag-ON sim; the Session matches each reply's embedded bank/pos to the request, discarding stale replies and resending \u2014 so name_requests_sent > reads, and every result is labeled correctly. The first read costs one full name_timeout (the sim holds every first reply, harsher than hardware)."
+    }
+  ]
+}

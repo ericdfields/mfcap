@@ -1,0 +1,461 @@
+{
+  "description": "Every request/frame builder in microfreak.protocol, for slots [0, 8, 40, 127, 128, 200, 383, 384, 509, 511]. Inputs (slot, seq, name, meta) are recorded per case; 'frame' is the exact wire bytes the builder must emit. name_write_frame cases feed reply-form meta (0x10 bit set for slots >= 128, junk in meta[5]/meta[6]) to pin the direction-dependent recompute: payload[3] = meta[0] & ~0x10, payload[8] = pos, payload[9] = 0x06. All byte sequences are uppercase two-digit hex, space-separated ('F0 00 20 6B ...'). Regenerate: python3 tools/gen_vectors.py (from the repo root).",
+  "cases": [
+    {
+      "kind": "read_name_req",
+      "slot": 0,
+      "bank": 0,
+      "pos": 0,
+      "seq": 1,
+      "frame": "F0 00 20 6B 07 01 01 03 19 00 00 00 F7"
+    },
+    {
+      "kind": "read_name_req",
+      "slot": 8,
+      "bank": 0,
+      "pos": 8,
+      "seq": 9,
+      "frame": "F0 00 20 6B 07 01 09 03 19 00 08 00 F7"
+    },
+    {
+      "kind": "read_name_req",
+      "slot": 40,
+      "bank": 0,
+      "pos": 40,
+      "seq": 41,
+      "frame": "F0 00 20 6B 07 01 29 03 19 00 28 00 F7"
+    },
+    {
+      "kind": "read_name_req",
+      "slot": 127,
+      "bank": 0,
+      "pos": 127,
+      "seq": 2,
+      "frame": "F0 00 20 6B 07 01 02 03 19 00 7F 00 F7"
+    },
+    {
+      "kind": "read_name_req",
+      "slot": 128,
+      "bank": 1,
+      "pos": 0,
+      "seq": 3,
+      "frame": "F0 00 20 6B 07 01 03 03 19 01 00 00 F7"
+    },
+    {
+      "kind": "read_name_req",
+      "slot": 200,
+      "bank": 1,
+      "pos": 72,
+      "seq": 75,
+      "frame": "F0 00 20 6B 07 01 4B 03 19 01 48 00 F7"
+    },
+    {
+      "kind": "read_name_req",
+      "slot": 383,
+      "bank": 2,
+      "pos": 127,
+      "seq": 6,
+      "frame": "F0 00 20 6B 07 01 06 03 19 02 7F 00 F7"
+    },
+    {
+      "kind": "read_name_req",
+      "slot": 384,
+      "bank": 3,
+      "pos": 0,
+      "seq": 7,
+      "frame": "F0 00 20 6B 07 01 07 03 19 03 00 00 F7"
+    },
+    {
+      "kind": "read_name_req",
+      "slot": 509,
+      "bank": 3,
+      "pos": 125,
+      "seq": 6,
+      "frame": "F0 00 20 6B 07 01 06 03 19 03 7D 00 F7"
+    },
+    {
+      "kind": "read_name_req",
+      "slot": 511,
+      "bank": 3,
+      "pos": 127,
+      "seq": 8,
+      "frame": "F0 00 20 6B 07 01 08 03 19 03 7F 00 F7"
+    },
+    {
+      "kind": "open_dump_req",
+      "slot": 0,
+      "bank": 0,
+      "pos": 0,
+      "seq": 1,
+      "frame": "F0 00 20 6B 07 01 01 01 19 00 00 01 F7",
+      "note": "len byte 0x01 is the phase-0/core convention; MCC sends 0x03 and hardware accepts both (docs/write-protocol.md)"
+    },
+    {
+      "kind": "open_dump_req",
+      "slot": 8,
+      "bank": 0,
+      "pos": 8,
+      "seq": 57,
+      "frame": "F0 00 20 6B 07 01 39 01 19 00 08 01 F7",
+      "note": "len byte 0x01 is the phase-0/core convention; MCC sends 0x03 and hardware accepts both (docs/write-protocol.md)"
+    },
+    {
+      "kind": "open_dump_req",
+      "slot": 40,
+      "bank": 0,
+      "pos": 40,
+      "seq": 29,
+      "frame": "F0 00 20 6B 07 01 1D 01 19 00 28 01 F7",
+      "note": "len byte 0x01 is the phase-0/core convention; MCC sends 0x03 and hardware accepts both (docs/write-protocol.md)"
+    },
+    {
+      "kind": "open_dump_req",
+      "slot": 127,
+      "bank": 0,
+      "pos": 127,
+      "seq": 8,
+      "frame": "F0 00 20 6B 07 01 08 01 19 00 7F 01 F7",
+      "note": "len byte 0x01 is the phase-0/core convention; MCC sends 0x03 and hardware accepts both (docs/write-protocol.md)"
+    },
+    {
+      "kind": "open_dump_req",
+      "slot": 128,
+      "bank": 1,
+      "pos": 0,
+      "seq": 15,
+      "frame": "F0 00 20 6B 07 01 0F 01 19 01 00 01 F7",
+      "note": "len byte 0x01 is the phase-0/core convention; MCC sends 0x03 and hardware accepts both (docs/write-protocol.md)"
+    },
+    {
+      "kind": "open_dump_req",
+      "slot": 200,
+      "bank": 1,
+      "pos": 72,
+      "seq": 15,
+      "frame": "F0 00 20 6B 07 01 0F 01 19 01 48 01 F7",
+      "note": "len byte 0x01 is the phase-0/core convention; MCC sends 0x03 and hardware accepts both (docs/write-protocol.md)"
+    },
+    {
+      "kind": "open_dump_req",
+      "slot": 383,
+      "bank": 2,
+      "pos": 127,
+      "seq": 36,
+      "frame": "F0 00 20 6B 07 01 24 01 19 02 7F 01 F7",
+      "note": "len byte 0x01 is the phase-0/core convention; MCC sends 0x03 and hardware accepts both (docs/write-protocol.md)"
+    },
+    {
+      "kind": "open_dump_req",
+      "slot": 384,
+      "bank": 3,
+      "pos": 0,
+      "seq": 43,
+      "frame": "F0 00 20 6B 07 01 2B 01 19 03 00 01 F7",
+      "note": "len byte 0x01 is the phase-0/core convention; MCC sends 0x03 and hardware accepts both (docs/write-protocol.md)"
+    },
+    {
+      "kind": "open_dump_req",
+      "slot": 509,
+      "bank": 3,
+      "pos": 125,
+      "seq": 36,
+      "frame": "F0 00 20 6B 07 01 24 01 19 03 7D 01 F7",
+      "note": "len byte 0x01 is the phase-0/core convention; MCC sends 0x03 and hardware accepts both (docs/write-protocol.md)"
+    },
+    {
+      "kind": "open_dump_req",
+      "slot": 511,
+      "bank": 3,
+      "pos": 127,
+      "seq": 50,
+      "frame": "F0 00 20 6B 07 01 32 01 19 03 7F 01 F7",
+      "note": "len byte 0x01 is the phase-0/core convention; MCC sends 0x03 and hardware accepts both (docs/write-protocol.md)"
+    },
+    {
+      "kind": "pull_next_req",
+      "seq": 1,
+      "frame": "F0 00 20 6B 07 01 01 01 18 00 F7",
+      "note": "host pull-next: len 0x01, payload [0x00] \u2014 distinct from the device's empty-payload ack"
+    },
+    {
+      "kind": "pull_next_req",
+      "seq": 64,
+      "frame": "F0 00 20 6B 07 01 40 01 18 00 F7",
+      "note": "host pull-next: len 0x01, payload [0x00] \u2014 distinct from the device's empty-payload ack"
+    },
+    {
+      "kind": "pull_next_req",
+      "seq": 127,
+      "frame": "F0 00 20 6B 07 01 7F 01 18 00 F7",
+      "note": "host pull-next: len 0x01, payload [0x00] \u2014 distinct from the device's empty-payload ack"
+    },
+    {
+      "kind": "go_frame",
+      "seq": 0,
+      "frame": "F0 00 20 6B 07 01 00 00 15 F7",
+      "note": "seq 0, len 0, empty payload \u2014 always"
+    },
+    {
+      "kind": "open_write_frame",
+      "slot": 0,
+      "bank": 0,
+      "pos": 0,
+      "seq": 1,
+      "frame": "F0 00 20 6B 07 01 01 03 52 00 00 01 F7"
+    },
+    {
+      "kind": "open_write_frame",
+      "slot": 8,
+      "bank": 0,
+      "pos": 8,
+      "seq": 41,
+      "frame": "F0 00 20 6B 07 01 29 03 52 00 08 01 F7"
+    },
+    {
+      "kind": "open_write_frame",
+      "slot": 40,
+      "bank": 0,
+      "pos": 40,
+      "seq": 75,
+      "frame": "F0 00 20 6B 07 01 4B 03 52 00 28 01 F7"
+    },
+    {
+      "kind": "open_write_frame",
+      "slot": 127,
+      "bank": 0,
+      "pos": 127,
+      "seq": 6,
+      "frame": "F0 00 20 6B 07 01 06 03 52 00 7F 01 F7"
+    },
+    {
+      "kind": "open_write_frame",
+      "slot": 128,
+      "bank": 1,
+      "pos": 0,
+      "seq": 11,
+      "frame": "F0 00 20 6B 07 01 0B 03 52 01 00 01 F7"
+    },
+    {
+      "kind": "open_write_frame",
+      "slot": 200,
+      "bank": 1,
+      "pos": 72,
+      "seq": 119,
+      "frame": "F0 00 20 6B 07 01 77 03 52 01 48 01 F7"
+    },
+    {
+      "kind": "open_write_frame",
+      "slot": 383,
+      "bank": 2,
+      "pos": 127,
+      "seq": 26,
+      "frame": "F0 00 20 6B 07 01 1A 03 52 02 7F 01 F7"
+    },
+    {
+      "kind": "open_write_frame",
+      "slot": 384,
+      "bank": 3,
+      "pos": 0,
+      "seq": 31,
+      "frame": "F0 00 20 6B 07 01 1F 03 52 03 00 01 F7"
+    },
+    {
+      "kind": "open_write_frame",
+      "slot": 509,
+      "bank": 3,
+      "pos": 125,
+      "seq": 26,
+      "frame": "F0 00 20 6B 07 01 1A 03 52 03 7D 01 F7"
+    },
+    {
+      "kind": "open_write_frame",
+      "slot": 511,
+      "bank": 3,
+      "pos": 127,
+      "seq": 36,
+      "frame": "F0 00 20 6B 07 01 24 03 52 03 7F 01 F7"
+    },
+    {
+      "kind": "name_write_frame",
+      "slot": 0,
+      "bank": 0,
+      "pos": 0,
+      "seq": 1,
+      "name": "Vec 000",
+      "meta": "08 01 02 03 04 55 7F 05 32",
+      "expected_payload": {
+        "p3": 8,
+        "p8": 0,
+        "p9": 6
+      },
+      "frame": "F0 00 20 6B 07 01 01 23 52 00 00 00 08 01 02 03 04 00 06 05 32 56 65 63 20 30 30 30 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 F7"
+    },
+    {
+      "kind": "name_write_frame",
+      "slot": 8,
+      "bank": 0,
+      "pos": 8,
+      "seq": 25,
+      "name": "Vec 008",
+      "meta": "08 01 02 03 04 55 7F 05 32",
+      "expected_payload": {
+        "p3": 8,
+        "p8": 8,
+        "p9": 6
+      },
+      "frame": "F0 00 20 6B 07 01 19 23 52 00 08 00 08 01 02 03 04 08 06 05 32 56 65 63 20 30 30 38 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 F7"
+    },
+    {
+      "kind": "name_write_frame",
+      "slot": 40,
+      "bank": 0,
+      "pos": 40,
+      "seq": 121,
+      "name": "Vec 040",
+      "meta": "08 01 02 03 04 55 7F 05 32",
+      "expected_payload": {
+        "p3": 8,
+        "p8": 40,
+        "p9": 6
+      },
+      "frame": "F0 00 20 6B 07 01 79 23 52 00 28 00 08 01 02 03 04 28 06 05 32 56 65 63 20 30 34 30 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 F7"
+    },
+    {
+      "kind": "name_write_frame",
+      "slot": 127,
+      "bank": 0,
+      "pos": 127,
+      "seq": 4,
+      "name": "Vec 127",
+      "meta": "08 01 02 03 04 55 7F 05 32",
+      "expected_payload": {
+        "p3": 8,
+        "p8": 127,
+        "p9": 6
+      },
+      "frame": "F0 00 20 6B 07 01 04 23 52 00 7F 00 08 01 02 03 04 7F 06 05 32 56 65 63 20 31 32 37 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 F7"
+    },
+    {
+      "kind": "name_write_frame",
+      "slot": 128,
+      "bank": 1,
+      "pos": 0,
+      "seq": 7,
+      "name": "Vec 128",
+      "meta": "18 01 02 03 04 55 7F 05 32",
+      "expected_payload": {
+        "p3": 8,
+        "p8": 0,
+        "p9": 6
+      },
+      "frame": "F0 00 20 6B 07 01 07 23 52 01 00 00 08 01 02 03 04 00 06 05 32 56 65 63 20 31 32 38 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 F7"
+    },
+    {
+      "kind": "name_write_frame",
+      "slot": 200,
+      "bank": 1,
+      "pos": 72,
+      "seq": 97,
+      "name": "Vec 200",
+      "meta": "18 01 02 03 04 55 7F 05 32",
+      "expected_payload": {
+        "p3": 8,
+        "p8": 72,
+        "p9": 6
+      },
+      "frame": "F0 00 20 6B 07 01 61 23 52 01 48 00 08 01 02 03 04 48 06 05 32 56 65 63 20 32 30 30 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 F7"
+    },
+    {
+      "kind": "name_write_frame",
+      "slot": 383,
+      "bank": 2,
+      "pos": 127,
+      "seq": 16,
+      "name": "Vec 383",
+      "meta": "18 01 02 03 04 55 7F 05 32",
+      "expected_payload": {
+        "p3": 8,
+        "p8": 127,
+        "p9": 6
+      },
+      "frame": "F0 00 20 6B 07 01 10 23 52 02 7F 00 08 01 02 03 04 7F 06 05 32 56 65 63 20 33 38 33 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 F7"
+    },
+    {
+      "kind": "name_write_frame",
+      "slot": 384,
+      "bank": 3,
+      "pos": 0,
+      "seq": 19,
+      "name": "Vec 384",
+      "meta": "18 01 02 03 04 55 7F 05 32",
+      "expected_payload": {
+        "p3": 8,
+        "p8": 0,
+        "p9": 6
+      },
+      "frame": "F0 00 20 6B 07 01 13 23 52 03 00 00 08 01 02 03 04 00 06 05 32 56 65 63 20 33 38 34 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 F7"
+    },
+    {
+      "kind": "name_write_frame",
+      "slot": 509,
+      "bank": 3,
+      "pos": 125,
+      "seq": 16,
+      "name": "Vec 509",
+      "meta": "18 01 02 03 04 55 7F 05 32",
+      "expected_payload": {
+        "p3": 8,
+        "p8": 125,
+        "p9": 6
+      },
+      "frame": "F0 00 20 6B 07 01 10 23 52 03 7D 00 08 01 02 03 04 7D 06 05 32 56 65 63 20 35 30 39 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 F7"
+    },
+    {
+      "kind": "name_write_frame",
+      "slot": 511,
+      "bank": 3,
+      "pos": 127,
+      "seq": 22,
+      "name": "Vec 511",
+      "meta": "18 01 02 03 04 55 7F 05 32",
+      "expected_payload": {
+        "p3": 8,
+        "p8": 127,
+        "p9": 6
+      },
+      "frame": "F0 00 20 6B 07 01 16 23 52 03 7F 00 08 01 02 03 04 7F 06 05 32 56 65 63 20 35 31 31 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 F7"
+    },
+    {
+      "kind": "name_write_frame",
+      "slot": 0,
+      "bank": 0,
+      "pos": 0,
+      "seq": 100,
+      "name": "",
+      "meta": "08 01 02 03 04 55 7F 05 32",
+      "expected_payload": {
+        "p3": 8,
+        "p8": 0,
+        "p9": 6
+      },
+      "frame": "F0 00 20 6B 07 01 64 23 52 00 00 00 08 01 02 03 04 00 06 05 32 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 F7",
+      "note": "empty name is valid; 23 NUL bytes on the wire"
+    },
+    {
+      "kind": "name_write_frame",
+      "slot": 511,
+      "bank": 3,
+      "pos": 127,
+      "seq": 101,
+      "name": "ABCDEFGHIJKLMNOPQRSTUVW",
+      "meta": "18 01 02 03 04 55 7F 05 32",
+      "expected_payload": {
+        "p3": 8,
+        "p8": 127,
+        "p9": 6
+      },
+      "frame": "F0 00 20 6B 07 01 65 23 52 03 7F 00 08 01 02 03 04 7F 06 05 32 41 42 43 44 45 46 47 48 49 4A 4B 4C 4D 4E 4F 50 51 52 53 54 55 56 57 F7",
+      "note": "maximum-length 23-char name; zero padding bytes"
+    }
+  ]
+}

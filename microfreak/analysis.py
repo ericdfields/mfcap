@@ -7,10 +7,12 @@ a stock device and the string "Init" is never matched. A slot is expendable
 when its exact bytes occur at least DUPLICATE_THRESHOLD times (3, not 2, so
 a user's own single duplicated preset is never chosen), or its
 successfully-read name is blank/whitespace-only (the phase-0 scratch rule).
-Unknown is never empty: records whose sha256 is None are never expendable,
-and neither is a record whose name is None — that means the name READ
-FAILED (a swallowed timeout in MicroFreak.snapshot), not that the slot is
-blank.
+Unknown disqualifies its own rule: a record whose sha256 is None (content
+unread) can never satisfy the duplicate rule, and a record whose name is
+None — the name READ FAILED (a swallowed timeout in MicroFreak.snapshot),
+not a blank slot — can never satisfy the blank-name rule. The rules stay
+independent: a name-read-failed slot whose blob IS mass-duplicated is still
+expendable, because the content judgement doesn't need the name.
 """
 from __future__ import annotations
 

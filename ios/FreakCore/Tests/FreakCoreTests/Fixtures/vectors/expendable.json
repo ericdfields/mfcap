@@ -1,0 +1,270 @@
+{
+  "description": "analysis.find_expendable vectors. A slot is expendable when its successfully-read name is blank/whitespace-only, OR its sha256 occurs >= threshold times (default DUPLICATE_THRESHOLD=3). sha256 values here are symbolic tokens \u2014 only string equality matters. null name means the name read FAILED; null sha256 means content unread; neither ever satisfies its respective rule. threshold null means the default 3. Regenerate: python3 tools/gen_vectors.py (from the repo root).",
+  "cases": [
+    {
+      "name": "two_copies_kept",
+      "threshold": null,
+      "records": [
+        {
+          "slot": 0,
+          "name": "Dup",
+          "sha256": "d"
+        },
+        {
+          "slot": 1,
+          "name": "Dup",
+          "sha256": "d"
+        },
+        {
+          "slot": 2,
+          "name": "Solo",
+          "sha256": "s"
+        }
+      ],
+      "expected_expendable": [],
+      "note": "threshold boundary: 2 identical blobs stay below the default DUPLICATE_THRESHOLD of 3 \u2014 a user's own single duplicate is never expendable"
+    },
+    {
+      "name": "three_copies_expendable",
+      "threshold": null,
+      "records": [
+        {
+          "slot": 0,
+          "name": "Dup",
+          "sha256": "d"
+        },
+        {
+          "slot": 1,
+          "name": "Dup",
+          "sha256": "d"
+        },
+        {
+          "slot": 2,
+          "name": "Solo",
+          "sha256": "s"
+        },
+        {
+          "slot": 3,
+          "name": "Dup",
+          "sha256": "d"
+        }
+      ],
+      "expected_expendable": [
+        0,
+        1,
+        3
+      ],
+      "note": "threshold boundary: at exactly 3 copies all three are expendable; the solo is kept"
+    },
+    {
+      "name": "threshold_override_2",
+      "threshold": 2,
+      "records": [
+        {
+          "slot": 0,
+          "name": "Dup",
+          "sha256": "d"
+        },
+        {
+          "slot": 1,
+          "name": "Dup",
+          "sha256": "d"
+        },
+        {
+          "slot": 2,
+          "name": "Solo",
+          "sha256": "s"
+        }
+      ],
+      "expected_expendable": [
+        0,
+        1
+      ]
+    },
+    {
+      "name": "threshold_override_4",
+      "threshold": 4,
+      "records": [
+        {
+          "slot": 0,
+          "name": "Dup",
+          "sha256": "d"
+        },
+        {
+          "slot": 1,
+          "name": "Dup",
+          "sha256": "d"
+        },
+        {
+          "slot": 2,
+          "name": "Solo",
+          "sha256": "s"
+        },
+        {
+          "slot": 3,
+          "name": "Dup",
+          "sha256": "d"
+        }
+      ],
+      "expected_expendable": []
+    },
+    {
+      "name": "blank_names_and_unknowns",
+      "threshold": null,
+      "records": [
+        {
+          "slot": 0,
+          "name": "",
+          "sha256": "u1"
+        },
+        {
+          "slot": 1,
+          "name": "   ",
+          "sha256": "u2"
+        },
+        {
+          "slot": 2,
+          "name": null,
+          "sha256": "u3"
+        },
+        {
+          "slot": 3,
+          "name": "",
+          "sha256": null
+        },
+        {
+          "slot": 4,
+          "name": "Keeper",
+          "sha256": "u4"
+        },
+        {
+          "slot": 5,
+          "name": null,
+          "sha256": null
+        }
+      ],
+      "expected_expendable": [
+        0,
+        1
+      ],
+      "note": "blank/whitespace READ names are expendable; name=None (read FAILED) with unique content is NOT; sha256=None is never expendable \u2014 unknown is not empty"
+    },
+    {
+      "name": "init_name_never_matched",
+      "threshold": null,
+      "records": [
+        {
+          "slot": 0,
+          "name": "Init",
+          "sha256": "unique-a"
+        },
+        {
+          "slot": 1,
+          "name": "Init",
+          "sha256": "unique-b"
+        },
+        {
+          "slot": 2,
+          "name": "My Patch",
+          "sha256": "unique-c"
+        }
+      ],
+      "expected_expendable": [],
+      "note": "emptiness is a content judgement: the string 'Init' is never matched by name"
+    },
+    {
+      "name": "three_inits_by_content",
+      "threshold": null,
+      "records": [
+        {
+          "slot": 0,
+          "name": "Init",
+          "sha256": "i"
+        },
+        {
+          "slot": 1,
+          "name": "Init",
+          "sha256": "i"
+        },
+        {
+          "slot": 2,
+          "name": "Init",
+          "sha256": "i"
+        }
+      ],
+      "expected_expendable": [
+        0,
+        1,
+        2
+      ]
+    },
+    {
+      "name": "name_none_unique_sha",
+      "threshold": null,
+      "records": [
+        {
+          "slot": 0,
+          "name": null,
+          "sha256": "u"
+        },
+        {
+          "slot": 1,
+          "name": "Keeper",
+          "sha256": "k"
+        }
+      ],
+      "expected_expendable": [],
+      "note": "an unreadable name with unique content is never expendable \u2014 a transient name-read failure cannot make a unique preset overwritable"
+    },
+    {
+      "name": "name_none_in_duplicate_group",
+      "threshold": null,
+      "records": [
+        {
+          "slot": 0,
+          "name": null,
+          "sha256": "d"
+        },
+        {
+          "slot": 1,
+          "name": "Init",
+          "sha256": "d"
+        },
+        {
+          "slot": 2,
+          "name": "Init",
+          "sha256": "d"
+        }
+      ],
+      "expected_expendable": [
+        0,
+        1,
+        2
+      ],
+      "note": "name=None disqualifies only the blank-name rule; the sha-duplicate rule still applies, so a name-read-failed slot whose CONTENT is mass-duplicated is expendable (find_expendable's elif chain)"
+    },
+    {
+      "name": "sha_none_never_expendable",
+      "threshold": null,
+      "records": [
+        {
+          "slot": 0,
+          "name": "",
+          "sha256": null
+        },
+        {
+          "slot": 1,
+          "name": null,
+          "sha256": null
+        },
+        {
+          "slot": 2,
+          "name": "Init",
+          "sha256": null
+        }
+      ],
+      "expected_expendable": [],
+      "note": "content unread: no rule can fire"
+    }
+  ]
+}

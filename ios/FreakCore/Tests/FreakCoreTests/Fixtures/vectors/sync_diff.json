@@ -1,0 +1,246 @@
+{
+  "description": "Pure sync.diff decision-table vectors: synthetic device snapshot records (slot, name, sha256 \u2014 shas are real sha256 hex of seeded blobs, but only string equality matters) against an in-memory library slot map. Status enum: IN_SYNC='in_sync', DEVICE_ONLY='added', LIBRARY_ONLY='missing', DIFFERS='changed', EMPTY='empty'. Rows come back one per record, ascending slot. threshold null means the default DUPLICATE_THRESHOLD=3. Regenerate: python3 tools/gen_vectors.py (from the repo root).",
+  "cases": [
+    {
+      "name": "five_statuses",
+      "threshold": null,
+      "records": [
+        {
+          "slot": 0,
+          "name": "User 0",
+          "sha256": "2cf3afd1f7dda136c543ecfa55371af8b6147877fbdc9028921eb542d849bcc2"
+        },
+        {
+          "slot": 1,
+          "name": "User 1",
+          "sha256": "0c47bbdb4013cf00fc7ca2d6e5a50ca0beda98e6228c5abee40d23dbd165335a"
+        },
+        {
+          "slot": 2,
+          "name": "User 2",
+          "sha256": "9c2f5e7d95e62b85b8f4e59684244c589f7aeb96ac83dbd3f171cf2a54999e73"
+        },
+        {
+          "slot": 3,
+          "name": "User 3",
+          "sha256": "0efdd1cda9845d861f83fa3b789be4b23ec088c12fc886b59b4a47a229a70a51"
+        },
+        {
+          "slot": 500,
+          "name": "Init",
+          "sha256": "61bfa17a2496d869c491eea8d3c9dde6bdf4c193a10c0c1d085d12bf2446b526"
+        },
+        {
+          "slot": 501,
+          "name": "Init",
+          "sha256": "61bfa17a2496d869c491eea8d3c9dde6bdf4c193a10c0c1d085d12bf2446b526"
+        },
+        {
+          "slot": 502,
+          "name": "Init",
+          "sha256": "61bfa17a2496d869c491eea8d3c9dde6bdf4c193a10c0c1d085d12bf2446b526"
+        },
+        {
+          "slot": 503,
+          "name": "Init",
+          "sha256": "61bfa17a2496d869c491eea8d3c9dde6bdf4c193a10c0c1d085d12bf2446b526"
+        }
+      ],
+      "library": [
+        {
+          "slot": 0,
+          "name": "User 0",
+          "sha256": "2cf3afd1f7dda136c543ecfa55371af8b6147877fbdc9028921eb542d849bcc2"
+        },
+        {
+          "slot": 1,
+          "name": "Newer Take",
+          "sha256": "807ccc12d7d1d382065a8f49e154700aaa07d1a45fb671d72bc4fc1d3493d215"
+        },
+        {
+          "slot": 500,
+          "name": "Went Missing",
+          "sha256": "9d058ccaf2972f124cb454ffe0dd7e1ac1517900525657867ab9a4eae053e472"
+        },
+        {
+          "slot": 501,
+          "name": "Kept Init",
+          "sha256": "61bfa17a2496d869c491eea8d3c9dde6bdf4c193a10c0c1d085d12bf2446b526"
+        }
+      ],
+      "expected": [
+        {
+          "slot": 0,
+          "status": "in_sync",
+          "status_name": "IN_SYNC"
+        },
+        {
+          "slot": 1,
+          "status": "changed",
+          "status_name": "DIFFERS"
+        },
+        {
+          "slot": 2,
+          "status": "added",
+          "status_name": "DEVICE_ONLY"
+        },
+        {
+          "slot": 3,
+          "status": "added",
+          "status_name": "DEVICE_ONLY"
+        },
+        {
+          "slot": 500,
+          "status": "missing",
+          "status_name": "LIBRARY_ONLY"
+        },
+        {
+          "slot": 501,
+          "status": "in_sync",
+          "status_name": "IN_SYNC"
+        },
+        {
+          "slot": 502,
+          "status": "empty",
+          "status_name": "EMPTY"
+        },
+        {
+          "slot": 503,
+          "status": "empty",
+          "status_name": "EMPTY"
+        }
+      ],
+      "note": "default threshold 3: 0 IN_SYNC, 1 DIFFERS, 2/3 DEVICE_ONLY, 500 LIBRARY_ONLY (assigned entry over an expendable slot), 501 IN_SYNC (sha equality wins before expendability), 502/503 EMPTY"
+    },
+    {
+      "name": "threshold_5",
+      "threshold": 5,
+      "records": [
+        {
+          "slot": 0,
+          "name": "User 0",
+          "sha256": "2cf3afd1f7dda136c543ecfa55371af8b6147877fbdc9028921eb542d849bcc2"
+        },
+        {
+          "slot": 1,
+          "name": "User 1",
+          "sha256": "0c47bbdb4013cf00fc7ca2d6e5a50ca0beda98e6228c5abee40d23dbd165335a"
+        },
+        {
+          "slot": 2,
+          "name": "User 2",
+          "sha256": "9c2f5e7d95e62b85b8f4e59684244c589f7aeb96ac83dbd3f171cf2a54999e73"
+        },
+        {
+          "slot": 3,
+          "name": "User 3",
+          "sha256": "0efdd1cda9845d861f83fa3b789be4b23ec088c12fc886b59b4a47a229a70a51"
+        },
+        {
+          "slot": 500,
+          "name": "Init",
+          "sha256": "61bfa17a2496d869c491eea8d3c9dde6bdf4c193a10c0c1d085d12bf2446b526"
+        },
+        {
+          "slot": 501,
+          "name": "Init",
+          "sha256": "61bfa17a2496d869c491eea8d3c9dde6bdf4c193a10c0c1d085d12bf2446b526"
+        },
+        {
+          "slot": 502,
+          "name": "Init",
+          "sha256": "61bfa17a2496d869c491eea8d3c9dde6bdf4c193a10c0c1d085d12bf2446b526"
+        },
+        {
+          "slot": 503,
+          "name": "Init",
+          "sha256": "61bfa17a2496d869c491eea8d3c9dde6bdf4c193a10c0c1d085d12bf2446b526"
+        }
+      ],
+      "library": [
+        {
+          "slot": 0,
+          "name": "User 0",
+          "sha256": "2cf3afd1f7dda136c543ecfa55371af8b6147877fbdc9028921eb542d849bcc2"
+        },
+        {
+          "slot": 1,
+          "name": "Newer Take",
+          "sha256": "807ccc12d7d1d382065a8f49e154700aaa07d1a45fb671d72bc4fc1d3493d215"
+        },
+        {
+          "slot": 500,
+          "name": "Went Missing",
+          "sha256": "9d058ccaf2972f124cb454ffe0dd7e1ac1517900525657867ab9a4eae053e472"
+        },
+        {
+          "slot": 501,
+          "name": "Kept Init",
+          "sha256": "61bfa17a2496d869c491eea8d3c9dde6bdf4c193a10c0c1d085d12bf2446b526"
+        }
+      ],
+      "expected": [
+        {
+          "slot": 0,
+          "status": "in_sync",
+          "status_name": "IN_SYNC"
+        },
+        {
+          "slot": 1,
+          "status": "changed",
+          "status_name": "DIFFERS"
+        },
+        {
+          "slot": 2,
+          "status": "added",
+          "status_name": "DEVICE_ONLY"
+        },
+        {
+          "slot": 3,
+          "status": "added",
+          "status_name": "DEVICE_ONLY"
+        },
+        {
+          "slot": 500,
+          "status": "changed",
+          "status_name": "DIFFERS"
+        },
+        {
+          "slot": 501,
+          "status": "in_sync",
+          "status_name": "IN_SYNC"
+        },
+        {
+          "slot": 502,
+          "status": "added",
+          "status_name": "DEVICE_ONLY"
+        },
+        {
+          "slot": 503,
+          "status": "added",
+          "status_name": "DEVICE_ONLY"
+        }
+      ],
+      "note": "at threshold 5 the four Inits stop being expendable: 500 becomes DIFFERS, 502/503 become DEVICE_ONLY; sha equality (0, 501) is unaffected"
+    },
+    {
+      "name": "refuses_missing_hashes",
+      "threshold": null,
+      "records": [
+        {
+          "slot": 0,
+          "name": "User 0",
+          "sha256": "2cf3afd1f7dda136c543ecfa55371af8b6147877fbdc9028921eb542d849bcc2"
+        },
+        {
+          "slot": 1,
+          "name": "Unread",
+          "sha256": null
+        }
+      ],
+      "library": [],
+      "expect_error": "ValueError",
+      "note": "diff requires every record to carry sha256 \u2014 refusing beats guessing"
+    }
+  ]
+}

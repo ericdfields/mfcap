@@ -1,0 +1,55 @@
+{
+  "description": "The five hardware 0x52 name-reply payloads captured 2026-09-01 (fw 5.x), verbatim from tests/test_sysex.py, wrapped in the frame envelope with seq 0x00 and the realistic len byte 0x23 (the parser does not validate the len byte). 'expected' is decode_name_reply's output: embedded slot, decoded name (printable-filtered, split at first NUL, stripped), and the 9 meta bytes payload[3..11] verbatim (note slot 200 carries category 0x03/attribute 0x11, and slots >= 128 carry the reply-only 0x10 flag in meta[0]). All byte sequences are uppercase two-digit hex, space-separated ('F0 00 20 6B ...'). Regenerate: python3 tools/gen_vectors.py (from the repo root).",
+  "cases": [
+    {
+      "slot": 0,
+      "payload": "00 00 00 08 00 00 00 00 00 00 00 33 49 6E 69 74 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00",
+      "frame": "F0 00 20 6B 07 01 00 23 52 00 00 00 08 00 00 00 00 00 00 00 33 49 6E 69 74 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 F7",
+      "expected": {
+        "slot": 0,
+        "name": "Init",
+        "meta": "08 00 00 00 00 00 00 00 33"
+      }
+    },
+    {
+      "slot": 8,
+      "payload": "00 08 00 00 00 00 00 00 08 00 02 32 4A 6A 6A 6A 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00",
+      "frame": "F0 00 20 6B 07 01 00 23 52 00 08 00 00 00 00 00 00 08 00 02 32 4A 6A 6A 6A 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 F7",
+      "expected": {
+        "slot": 8,
+        "name": "Jjjj",
+        "meta": "00 00 00 00 00 08 00 02 32"
+      }
+    },
+    {
+      "slot": 40,
+      "payload": "00 28 00 00 00 00 00 00 28 00 05 33 54 72 61 70 70 65 64 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00",
+      "frame": "F0 00 20 6B 07 01 00 23 52 00 28 00 00 00 00 00 00 28 00 05 33 54 72 61 70 70 65 64 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 F7",
+      "expected": {
+        "slot": 40,
+        "name": "Trapped",
+        "meta": "00 00 00 00 00 28 00 05 33"
+      }
+    },
+    {
+      "slot": 200,
+      "payload": "01 48 00 10 00 00 00 00 48 00 03 11 50 6C 61 79 20 43 68 6F 72 64 73 00 00 00 00 00 00 00 00 00 00 00 00",
+      "frame": "F0 00 20 6B 07 01 00 23 52 01 48 00 10 00 00 00 00 48 00 03 11 50 6C 61 79 20 43 68 6F 72 64 73 00 00 00 00 00 00 00 00 00 00 00 00 F7",
+      "expected": {
+        "slot": 200,
+        "name": "Play Chords",
+        "meta": "10 00 00 00 00 48 00 03 11"
+      }
+    },
+    {
+      "slot": 511,
+      "payload": "03 7F 00 18 00 00 00 00 7F 01 00 33 49 6E 69 74 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00",
+      "frame": "F0 00 20 6B 07 01 00 23 52 03 7F 00 18 00 00 00 00 7F 01 00 33 49 6E 69 74 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 F7",
+      "expected": {
+        "slot": 511,
+        "name": "Init",
+        "meta": "18 00 00 00 00 7F 01 00 33"
+      }
+    }
+  ]
+}
