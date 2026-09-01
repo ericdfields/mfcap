@@ -203,13 +203,17 @@ def cmd_capture(args) -> int:
         return 1
 
     slot_a = args.slot_a or vf.pick_scratch_slot(backup_index)
-    slot_b = args.slot_b or (slot_a - 1 if slot_a else None)
-    if slot_a is None:
-        op.banner("No empty slots", "Every slot on the device is occupied. Pass "
-                                    "--slot-a/--slot-b naming two you are willing to "
-                                    "overwrite; they are restorable from the backup.")
+    slot_b = args.slot_b or (
+        vf.pick_scratch_slot(backup_index, exclude=(slot_a,)) if slot_a is not None
+        else None)
+    if slot_a is None or slot_b is None:
+        op.banner("No expendable slots", "No slot in the backup is blank or a "
+                                         "mass-duplicated factory Init. Pass "
+                                         "--slot-a/--slot-b naming two you are willing "
+                                         "to overwrite; they are restorable from the "
+                                         "backup.")
         return EXIT_NEEDS_HUMAN
-    op.ok(f"scratch slots: {slot_a} and {slot_b} (both read as empty in the backup)")
+    op.ok(f"scratch slots: {slot_a} and {slot_b} (both expendable per the backup)")
 
     master = work / "capture.jsonl"
     proxy = Proxy(capture_path=master)

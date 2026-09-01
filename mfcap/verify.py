@@ -144,19 +144,36 @@ def run_gate(dev: Device, capture_rows: List[dict], source_slot: int,
     return result
 
 
-def pick_scratch_slot(backup_index: Path, prefer_from: int = 500) -> Optional[int]:
-    """Choose the safest slot to write into: highest-numbered empty one.
+def pick_scratch_slot(backup_index: Path, prefer_from: int = 500,
+                      exclude: tuple = ()) -> Optional[int]:
+    """Choose the safest slot to write into: highest-numbered expendable one.
 
-    Only falls back to an occupied slot if the device is genuinely full, and
-    then it is the caller's job to put that choice in front of a human.
+    "Empty" is judged by content, not name: the MicroFreak ships every unused
+    slot as a factory Init preset with a name ("Init"), so a blank name never
+    happens on a stock device. A slot is expendable if its exact bytes occur
+    at least three times in the backup - overwriting one copy of a
+    mass-duplicated blob loses nothing unique. (Three, not two, so a user's
+    own single duplicated preset is never chosen.) Blank-named slots also
+    qualify.
+
+    Only falls back to asking a human if no slot qualifies, and then it is
+    the caller's job to put that choice in front of them.
     """
     data = json.loads(Path(backup_index).read_text())
     presets = data.get("presets", {})
-    empties = [int(k) for k, v in presets.items()
-               if int(k) >= prefer_from and not (v.get("name") or "").strip()]
-    if empties:
-        return max(empties)
-    any_empty = [int(k) for k, v in presets.items() if not (v.get("name") or "").strip()]
-    if any_empty:
-        return max(any_empty)
+    sha_counts: dict = {}
+    for v in presets.values():
+        sha = v.get("sha256")
+        sha_counts[sha] = sha_counts.get(sha, 0) + 1
+
+    def expendable(v: dict) -> bool:
+        if not (v.get("name") or "").strip():
+            return True
+        return sha_counts.get(v.get("sha256"), 0) >= 3
+
+    for threshold in (prefer_from, 0):
+        picks = [int(k) for k, v in presets.items()
+                 if int(k) >= threshold and int(k) not in exclude and expendable(v)]
+        if picks:
+            return max(picks)
     return None
