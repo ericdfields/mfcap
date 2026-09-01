@@ -69,10 +69,11 @@ def cmd_doctor(args) -> int:
     except Exception as exc:
         op.warn(f"could not enumerate MIDI ports: {exc}")
 
-    if Path("/Applications/MIDI Control Center.app").exists():
-        op.ok("MIDI Control Center installed")
+    mcc_path = mccauto.find_mcc()
+    if mcc_path:
+        op.ok(f"MIDI Control Center installed ({mcc_path})")
     else:
-        op.warn("MIDI Control Center not found in /Applications")
+        op.warn("MIDI Control Center not found")
         todo.append("Install MIDI Control Center from arturia.com")
 
     if mccauto.have_cliclick():

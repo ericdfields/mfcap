@@ -38,6 +38,24 @@ CONTROLS = [
 ]
 
 
+def find_mcc() -> Optional[Path]:
+    """Arturia's installer puts MCC in /Applications/Arturia/ by default;
+    older installs and manual drags land in /Applications/. Launch Services
+    also knows it wherever it lives."""
+    for p in (Path("/Applications/Arturia/MIDI Control Center.app"),
+              Path("/Applications/MIDI Control Center.app"),
+              Path.home() / "Applications/MIDI Control Center.app"):
+        if p.exists():
+            return p
+    r = subprocess.run(
+        ["mdfind", 'kMDItemCFBundleIdentifier == "com.arturia.midicontrolcenter"'],
+        capture_output=True, text=True, timeout=15)
+    for line in r.stdout.splitlines():
+        if line.strip().endswith(".app"):
+            return Path(line.strip())
+    return None
+
+
 def have_cliclick() -> bool:
     return shutil.which("cliclick") is not None
 
