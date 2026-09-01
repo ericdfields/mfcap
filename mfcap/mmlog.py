@@ -69,6 +69,24 @@ def convert(log_path: Path, out_path: Path) -> int:
     return len(rows)
 
 
+def split_bursts(rows: List[dict], gap: float = 3.0) -> List[List[dict]]:
+    """Group rows into bursts separated by at least `gap` seconds of silence.
+
+    MIDI Monitor logs carry no case markers, but the five capture cases are
+    performed one at a time with a pause between them, so silence is the
+    marker. Rows without timestamps all land in one burst.
+    """
+    bursts: List[List[dict]] = []
+    last_t: Optional[float] = None
+    for r in rows:
+        t = r.get("t") or 0.0
+        if last_t is None or (t - last_t) >= gap:
+            bursts.append([])
+        bursts[-1].append(r)
+        last_t = t
+    return bursts
+
+
 INSTALL_HINT = (
     "MIDI Monitor is the fallback capture route.\n"
     "  1. brew install --cask midi-monitor      (or snoize.com/MIDIMonitor)\n"

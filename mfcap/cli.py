@@ -258,13 +258,37 @@ def cmd_capture(args) -> int:
     return 0
 
 
+CASE_ORDER = ["c1_presetA_slotA", "c2_presetA_slotB", "c3_presetB_slotA",
+              "c4_init_slotA", "c5_rename"]
+
+
 def cmd_import_mm(args) -> int:
     op = Operator(args.work)
     out = Path(args.work) / "capture.jsonl"
     n = mmlog.convert(Path(args.log), out)
     op.ok(f"imported {n} messages from MIDI Monitor -> {out}")
-    op.warn("MIDI Monitor logs have no case markers. Save one log per capture and "
-            "import each to cases/<case>.jsonl, or add markers by hand.")
+
+    if not args.split:
+        op.warn("MIDI Monitor logs have no case markers. Re-run with --split if this "
+                "log holds all five cases in order, separated by pauses.")
+        return 0
+
+    rows = [json.loads(l) for l in out.read_text().splitlines()]
+    bursts = mmlog.split_bursts(rows, gap=args.gap)
+    op.info(f"{len(bursts)} bursts found with a {args.gap}s silence threshold: "
+            + ", ".join(f"{len(b)} msgs @ t={b[0].get('t', 0):.1f}s" for b in bursts))
+    if len(bursts) != len(CASE_ORDER):
+        op.warn(f"expected {len(CASE_ORDER)} bursts (the five cases, in order). "
+                f"Adjust --gap, or recapture with clearer pauses between actions.")
+        return 1
+
+    cases_dir = Path(args.work) / "cases"
+    cases_dir.mkdir(parents=True, exist_ok=True)
+    for key, burst in zip(CASE_ORDER, bursts):
+        p = cases_dir / f"{key}.jsonl"
+        p.write_text("".join(json.dumps(r) + "\n" for r in burst))
+        op.ok(f"{key}: {len(burst)} messages -> {p}")
+    op.info("Next: mfcap analyze")
     return 0
 
 
@@ -339,6 +363,10 @@ def main(argv=None) -> int:
 
     m = sub.add_parser("import-mm")
     m.add_argument("log")
+    m.add_argument("--split", action="store_true",
+                   help="split the log into the five case files by silence gaps")
+    m.add_argument("--gap", type=float, default=3.0,
+                   help="seconds of silence that separate two cases (default 3)")
     m.set_defaults(fn=cmd_import_mm)
 
     a = sub.add_parser("analyze")
