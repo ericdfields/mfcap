@@ -1,10 +1,23 @@
 # mfcap — MicroFreak phase 0 harness
 
+> **Status: the gate is PASSED (2026-09-01).** The write protocol is decoded
+> and verified — a captured MCC burst replayed to a different slot read back
+> byte-identical, and a fully synthesized write did too. See
+> [docs/write-protocol.md](docs/write-protocol.md) for the decoded protocol
+> and [docs/runbook.md](docs/runbook.md) for the original plan. `mfcap
+> restore --slot N` writes a backed-up preset back through the proven path.
+>
+> Practical capture note: MCC binds straight to the MicroFreak's USB port and
+> offers no port picker, so the virtual-port MITM below never gets adopted on
+> this host — the MIDI Monitor spy route (`import-mm --split`) is the real
+> capture path, not a fallback.
+
 Everything needed to decode the MicroFreak's SysEx **write** protocol and prove
-it, on the way to the iPad librarian. Reads are already understood; writes are
-the gate. This toolkit backs the device up, watches MIDI Control Center write a
-preset, works out how, and then proves it by writing one itself and reading it
-back.
+it, on the way to the librarian (iPad first; the protocol core stays
+host-agnostic so a Pi-powered device can run it too). Reads are already
+understood; writes are the gate. This toolkit backs the device up, watches
+MIDI Control Center write a preset, works out how, and then proves it by
+writing one itself and reading it back.
 
 Runs on the Mac. Python 3.9+, one dependency.
 

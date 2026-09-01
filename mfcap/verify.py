@@ -84,16 +84,27 @@ def replay(dev: Device, rows: List[dict], target_slot: int,
 
 def run_gate(dev: Device, capture_rows: List[dict], source_slot: int,
              scratch_slot: int, rewrites: List[Rewrite],
-             out_dir: Path, log) -> dict:
-    """Full gate run with restore. Returns a verdict dict."""
+             out_dir: Path, log, expected_blob: Optional[bytes] = None) -> dict:
+    """Full gate run with restore. Returns a verdict dict.
+
+    expected_blob, when given, is the authoritative expectation - the blob
+    assembled from the capture's own chunk frames. Reading the source slot
+    instead is a trap: anything written to that slot after the capture (c4
+    drags init onto the same slot, for instance) silently changes the
+    expectation and fails a write that actually worked.
+    """
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     reader = Reader(dev)
     result = {"source_slot": source_slot, "scratch_slot": scratch_slot,
               "passed": False, "stage": "start"}
 
-    log(f"reading source slot {source_slot} (what MCC wrote)")
-    expected = reader.preset(source_slot)
+    if expected_blob:
+        log("expectation: blob assembled from the capture's own chunks")
+        expected = expected_blob
+    else:
+        log(f"reading source slot {source_slot} (what MCC wrote)")
+        expected = reader.preset(source_slot)
     if not expected:
         result["stage"] = "source read failed"
         return result

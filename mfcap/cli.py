@@ -314,15 +314,26 @@ def cmd_analyze(args) -> int:
     return 0
 
 
+def _assemble_out_chunks(rows) -> bytes:
+    chunks = [r for r in rows
+              if r.get("dir") == "out" and r.get("cmd") in (0x16, 0x17)]
+    return b"".join(bytes(int(x, 16) for x in r["hex"].split())[9:-1]
+                    for r in chunks)
+
+
 def cmd_verify(args) -> int:
     op = Operator(args.work)
     work = Path(args.work)
-    rows = an.load(work / "cases" / "c1_presetA_slotA.jsonl")
+    rows = an.load(work / "cases" / args.source_case)
     rewrites = [vf.Rewrite(**r) for r in json.loads(Path(args.rewrites).read_text())]
+    expected = _assemble_out_chunks(rows)
+    if expected:
+        op.ok(f"expected blob from capture: {len(expected)} bytes")
     dev = midi.Device.open()
     try:
         result = vf.run_gate(dev, rows, args.source_slot, args.scratch_slot,
-                             rewrites, work / "gate", op.info)
+                             rewrites, work / "gate", op.info,
+                             expected_blob=expected or None)
     finally:
         dev.close()
     if result["passed"]:
@@ -332,6 +343,48 @@ def cmd_verify(args) -> int:
         return 0
     op.banner("gate failed", json.dumps(result, indent=2), color="\033[38;5;167m")
     return 1
+
+
+def cmd_restore(args) -> int:
+    """Write a slot's backed-up blob back to the device via the proven path."""
+    from . import writer
+    op = Operator(args.work)
+    work = Path(args.work)
+    slot = args.slot
+
+    idx = json.loads((work / "backup" / "index.json").read_text())
+    entry = idx["presets"].get(str(slot))
+    if not entry:
+        op.warn(f"slot {slot} not in the backup index")
+        return 1
+    blob = (work / "backup" / "presets" / f"{slot:03d}.bin").read_bytes()
+    template = an.load(work / "cases" / args.template_case)
+    rewrites = writer.address_rewrites(template)
+    if not rewrites:
+        op.warn("template burst has no recognizable write-open frame")
+        return 1
+    rows = writer.synth_rows(template, blob, name=entry.get("name"))
+
+    dev = midi.Device.open()
+    try:
+        op.info(f"writing {len(blob)} bytes ({entry.get('name')!r}) to slot {slot}")
+        vf.replay(dev, rows, slot, rewrites)
+        import time as _t
+        _t.sleep(1.0)
+        got = midi.Reader(dev).preset(slot)
+    finally:
+        dev.close()
+    if got and sx_digest(got) == entry["sha256"]:
+        op.ok(f"slot {slot} restored and verified against the backup hash")
+        return 0
+    op.warn(f"read-back mismatch: {sx_digest(got) if got else 'no read'} "
+            f"vs backup {entry['sha256']}")
+    return 1
+
+
+def sx_digest(b: bytes) -> str:
+    from . import sysex
+    return sysex.digest(b)
 
 
 # --------------------------------------------------------------------------
@@ -379,7 +432,16 @@ def main(argv=None) -> int:
     v.add_argument("--scratch-slot", type=int, required=True)
     v.add_argument("--rewrites", required=True,
                    help="JSON list of {frame_index, offset, kind} from findings.md")
+    v.add_argument("--source-case", default="c1_presetA_slotA.jsonl",
+                   help="case file under cases/ whose write burst to replay")
     v.set_defaults(fn=cmd_verify)
+
+    r = sub.add_parser("restore",
+                       help="write a slot's backed-up contents back, gate-verified path only")
+    r.add_argument("--slot", type=int, required=True)
+    r.add_argument("--template-case", default="c3_presetB_slotA.jsonl",
+                   help="captured write burst to use as the frame template")
+    r.set_defaults(fn=cmd_restore)
 
     args = p.parse_args(argv)
     Path(args.work).mkdir(parents=True, exist_ok=True)
