@@ -1,3 +1,62 @@
+# MicroFreak librarian
+
+**Phase 1 (current): the [`microfreak`](microfreak/) package.** The proven
+phase-0 protocol code, extracted into an installable, framework-agnostic
+core. The package is the product; the `mfcap` harness below is the phase-0
+tooling that decoded the protocol, and the core's first client.
+
+```bash
+pip install -e .              # the core, standard library only
+pip install -e '.[rtmidi]'    # + python-rtmidi, for real hardware
+```
+
+```python
+import microfreak
+
+with microfreak.open_device() as mf:
+    backup = mf.backup("backups/2026-09-01")   # all 512 slots, resumable
+    mf.write(412, backup.preset(300))          # read back + hash-verified by default
+```
+
+What the core gives a frontend:
+
+- read, write, rename — every device write is read back and hash-verified
+  by default; skipping that is an explicit per-call opt-out
+- full-device backup and restore (progress callbacks, median-based ETA,
+  resume, each slot persisted before the next is read)
+- a `Library` of content-addressed preset blobs, and a pure
+  device-vs-library sync diff (added / changed / missing / in-sync / empty
+  per slot) that computes and never writes
+- expendable-slot detection — content-based (sha duplicated ≥ 3 times),
+  never a `"Init"` name match, because empty slots don't exist on this synth
+- transport as an injected seam: an rtmidi adapter for hardware, and
+  `SimulatedMicroFreak` — an in-memory device faithful to the decoded
+  protocol, reply-lag quirk included — for offline development and tests
+
+Python 3.9+, synchronous, UI-free, host-agnostic. The core depends on the
+standard library only; `python-rtmidi` is touched inside one lazily-imported
+adapter module, so `import microfreak` works with no rtmidi installed. The
+same core serves the Mac CLI today and the iPad app or a Pi-powered
+touchscreen device later — UI code talks to the slot/preset API, never to
+frames.
+
+Docs: [docs/core-api.md](docs/core-api.md) is the API reference and the
+contract a Swift or Pi port implements ("Porting the core" covers the
+transport contract, state machines, invariants and quirks);
+[docs/write-protocol.md](docs/write-protocol.md) remains wire ground truth.
+
+Tests are plain scripts — offline, no hardware, no rtmidi, no pytest:
+
+```bash
+for t in tests/test_*.py; do python3 "$t"; done
+```
+
+Everything below this line is phase 0: the capture-and-decode toolkit that
+got the protocol proven. It still works, and `mfcap` remains the way to run
+captures against MCC.
+
+---
+
 # mfcap — MicroFreak phase 0 harness
 
 > **Status: the gate is PASSED (2026-09-01).** The write protocol is decoded
@@ -163,17 +222,19 @@ python3 -m mfcap import-mm ~/Desktop/capture.txt
 ## Layout
 
 ```
+microfreak/     the phase-1 core package: protocol codec, Session, MicroFreak
+                device API, backup/library/sync (docs/core-api.md is its contract)
 mfcap/
   operator.py   human-in-the-loop: Step, escalation, auto-advance, resume
-  sysex.py      frame construction and decoding (documented protocol only)
-  midi.py       CoreMIDI I/O, the Reader, full-device backup + timing
+  sysex.py      thin shim over microfreak.protocol + the capture Frame helpers
+  midi.py       CoreMIDI I/O and the Reader (capture/gate plumbing)
   proxy.py      virtual-port MITM and its self-probe
   mccauto.py    calibration and verified coordinate replay
   captures.py   the five cases, as Steps
   analyze.py    burst splitting, diffs, checksum hunt, rewrite map
   verify.py     retargeted replay and the write/read-back gate
   mmlog.py      MIDI Monitor fallback parser
-  cli.py        commands
+  cli.py        commands (backup runs through microfreak.MicroFreak.backup)
 tests/
   test_gate.py  replay + gate against a simulated MicroFreak
 ```

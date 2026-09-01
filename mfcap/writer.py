@@ -18,15 +18,15 @@ The name travels only in the 0x52 frame; the 4672-byte blob only in chunks.
 """
 from __future__ import annotations
 
-import json
-from pathlib import Path
 from typing import List, Optional
+
+from microfreak import protocol as _p
 
 from . import sysex as sx
 from .verify import Rewrite
 
-NAME_OFFSET = 12          # name position inside the long 0x52 payload
-NAME_FIELD_LEN = 23
+NAME_OFFSET = _p.NAME_OFFSET       # name position inside the long 0x52 payload
+NAME_FIELD_LEN = _p.NAME_LEN
 
 
 def template_target(rows: List[dict]) -> Optional[int]:

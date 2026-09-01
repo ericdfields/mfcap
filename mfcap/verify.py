@@ -22,6 +22,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+from microfreak import analysis as _analysis
+from microfreak.model import SlotRecord
+
 from . import sysex as sx
 from .midi import Device, Reader
 
@@ -169,22 +172,13 @@ def pick_scratch_slot(backup_index: Path, prefer_from: int = 500,
 
     Only falls back to asking a human if no slot qualifies, and then it is
     the caller's job to put that choice in front of them.
+
+    The judgement itself lives in microfreak.analysis (find_expendable /
+    pick_scratch_slot); this is the phase-0 index.json adapter around it.
     """
     data = json.loads(Path(backup_index).read_text())
-    presets = data.get("presets", {})
-    sha_counts: dict = {}
-    for v in presets.values():
-        sha = v.get("sha256")
-        sha_counts[sha] = sha_counts.get(sha, 0) + 1
-
-    def expendable(v: dict) -> bool:
-        if not (v.get("name") or "").strip():
-            return True
-        return sha_counts.get(v.get("sha256"), 0) >= 3
-
-    for threshold in (prefer_from, 0):
-        picks = [int(k) for k, v in presets.items()
-                 if int(k) >= threshold and int(k) not in exclude and expendable(v)]
-        if picks:
-            return max(picks)
-    return None
+    records = [SlotRecord(slot=int(k), name=v.get("name"),
+                          sha256=v.get("sha256"), meta=None, blob=None)
+               for k, v in data.get("presets", {}).items()]
+    return _analysis.pick_scratch_slot(records, prefer_from=prefer_from,
+                                       exclude=exclude)

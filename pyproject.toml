@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "microfreak"
+version = "0.1.0"
+description = "Framework-agnostic core for an Arturia MicroFreak preset librarian (stdlib-only; rtmidi optional)"
+requires-python = ">=3.9"
+dependencies = []
+
+[project.optional-dependencies]
+rtmidi = ["python-rtmidi>=1.5"]
+
+[tool.setuptools]
+packages = ["microfreak", "microfreak.transports"]

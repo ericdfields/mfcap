@@ -18,6 +18,10 @@ import sys
 import time
 from pathlib import Path
 
+import microfreak
+from microfreak.errors import (DeviceNotFoundError, MicroFreakError,
+                               TransportUnavailableError)
+
 from . import analyze as an
 from . import mccauto, midi, mmlog, sysex as sx, verify as vf
 from .captures import build_cases, run_cases, split_capture
@@ -119,34 +123,48 @@ def cmd_ports(args) -> int:
 # --------------------------------------------------------------------------
 
 def cmd_backup(args) -> int:
+    """Thin client of microfreak.MicroFreak.backup (same on-disk format the
+    phase-0 loop wrote; meta_hex is additive). Reads only, never writes."""
+    from microfreak.transports.rtmidi import RtMidiTransport
+
     op = Operator(args.work)
     out = Path(args.work) / "backup"
-    dev = midi.Device.open()
-    op.ok(f"connected: in={dev.in_name!r} out={dev.out_name!r}")
+    transport = RtMidiTransport.open()
+    op.ok(f"connected: in={transport.in_name!r} out={transport.out_name!r}")
 
     start = time.time()
 
-    def progress(i, n, name):
+    def progress(ev):
+        i, n = ev.done - 1, ev.total
         if i % 8 == 0 or i == n - 1:
-            done = i + 1
+            done = ev.done
             rate = done / max(time.time() - start, 0.01)
             eta = (n - done) / max(rate, 0.001)
-            print(f"\r  slot {done}/{n}  {name[:22]:22s}  eta {int(eta)}s   ",
+            print(f"\r  slot {done}/{n}  {ev.name[:22]:22s}  eta {int(eta)}s   ",
                   end="", flush=True)
 
+    mfk = microfreak.MicroFreak(transport, slots=args.slots)
     try:
-        index = midi.backup(dev, out, slots=args.slots, progress=progress)
+        mfk.backup(out, progress=progress)
+    except MicroFreakError as exc:
+        print()
+        op.warn(f"backup stopped: {exc}")
+        op.info("slots read so far are on disk; fix the connection and re-run")
+        return 1
     finally:
-        dev.close()
+        mfk.close()
     print()
 
-    named = sum(1 for v in index["presets"].values() if (v.get("name") or "").strip())
-    dumped = sum(1 for v in index["presets"].values() if v.get("sha256"))
+    index = json.loads((out / "index.json").read_text())
+    wanted = {str(s) for s in range(args.slots)}
+    entries = [v for k, v in index["presets"].items() if k in wanted]
+    named = sum(1 for v in entries if (v.get("name") or "").strip())
+    dumped = sum(1 for v in entries if v.get("sha256"))
     op.ok(f"{named} named slots, {dumped} blobs dumped -> {out}")
     op.info(f"timing: {json.dumps(index['timing'])}")
     if dumped < args.slots * 0.9:
-        op.warn("many slots failed to dump - check the len-byte assumption in sysex.py "
-                "before trusting this as a backup")
+        op.warn("many slots failed to dump - check the len-byte assumption in "
+                "microfreak/protocol.py before trusting this as a backup")
         return 1
     op.mark("backup_complete", {"path": str(out), "slots": args.slots})
     return 0
@@ -374,17 +392,12 @@ def cmd_restore(args) -> int:
         got = midi.Reader(dev).preset(slot)
     finally:
         dev.close()
-    if got and sx_digest(got) == entry["sha256"]:
+    if got and sx.digest(got) == entry["sha256"]:
         op.ok(f"slot {slot} restored and verified against the backup hash")
         return 0
-    op.warn(f"read-back mismatch: {sx_digest(got) if got else 'no read'} "
+    op.warn(f"read-back mismatch: {sx.digest(got) if got else 'no read'} "
             f"vs backup {entry['sha256']}")
     return 1
-
-
-def sx_digest(b: bytes) -> str:
-    from . import sysex
-    return sysex.digest(b)
 
 
 # --------------------------------------------------------------------------
@@ -451,7 +464,8 @@ def main(argv=None) -> int:
         args.no_fix = True
     try:
         return args.fn(args)
-    except midi.MidiUnavailable as exc:
+    except (midi.MidiUnavailable, TransportUnavailableError,
+            DeviceNotFoundError) as exc:
         print(f"\n  {exc}\n")
         return EXIT_NEEDS_HUMAN
     except KeyboardInterrupt:

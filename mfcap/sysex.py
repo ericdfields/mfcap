@@ -1,38 +1,39 @@
-"""MicroFreak SysEx frames.
+"""MicroFreak SysEx frames - mfcap's capture-oriented view.
 
-Frame layout (francoisgeorgy/microfreak-reverse):
+Since phase 1 the protocol itself lives in the `microfreak` core package:
+`microfreak.protocol` is the single stateless codec, and
+docs/write-protocol.md remains ground truth. This module is a thin shim that
+delegates every wire fact to that codec and keeps only what the capture
+harness adds on top:
 
-    F0 00 20 6B 07 01 <seq> <len> <cmd> [data...] F7
-       |________| |
-       Arturia    MicroFreak device id = 0x07
+- the timestamped, direction-tagged `Frame` that proxy captures and JSONL
+  rows are built from;
+- list-of-int frame builders (what rtmidi's send_message and the recorded
+  hex rows historically used);
+- `decode_param`, a phase-0 analysis helper the librarian core does not need;
+- `assemble` without the 4672-byte check - gate/replay tooling assembles
+  partial and simulated dumps, while the librarian path
+  (microfreak.protocol.assemble_blob) enforces the real blob size.
 
-Known commands
-    0x19  open: preset name read (trailer 0x00) / preset dump (trailer 0x01)
-    0x18  pull next dump chunk
-    0x16  reply: chunk, more to come
-    0x17  reply: chunk, last one
-    0x52  reply: preset name
-
-The <len> byte does not obviously equal the payload length in the published
-notes (name reads use 0x03, dump opens use 0x01). We reproduce the documented
-byte sequences literally and treat <len> as opaque until a capture proves what
-it means. LEN_IS_UNVERIFIED marks every place that assumption lives.
+Frame layout: F0 00 20 6B 07 01 <seq> <len> <cmd> [data...] F7
 """
 from __future__ import annotations
 
-import hashlib
 from dataclasses import dataclass
-from typing import Iterable, List, Optional
+from typing import Iterable, List, Optional, Tuple
 
-ARTURIA = [0x00, 0x20, 0x6B]
-MICROFREAK = 0x07
-PREFIX = [0xF0] + ARTURIA + [MICROFREAK, 0x01]
+from microfreak import protocol as _p
 
-CMD_OPEN = 0x19
-CMD_NEXT = 0x18
-CMD_CHUNK_MORE = 0x16
-CMD_CHUNK_LAST = 0x17
-CMD_NAME = 0x52
+ARTURIA = list(_p.ARTURIA)
+MICROFREAK = _p.MICROFREAK
+PREFIX = list(_p.PREFIX)
+
+CMD_OPEN = _p.CMD_OPEN
+CMD_NEXT = _p.CMD_NEXT
+CMD_CHUNK_MORE = _p.CMD_CHUNK_MORE
+CMD_CHUNK_LAST = _p.CMD_CHUNK_LAST
+CMD_GO = _p.CMD_GO
+CMD_NAME = _p.CMD_NAME
 
 CMD_NAMES = {
     0x19: "open",
@@ -42,35 +43,39 @@ CMD_NAMES = {
     0x52: "name",
 }
 
-LEN_IS_UNVERIFIED = True
-SLOTS_PER_BANK = 128
+# Resolved 2026-09-01: the gate verified the <len> byte for every frame type
+# we send (docs/write-protocol.md). The name survives for old callers/notes.
+LEN_IS_UNVERIFIED = False
+SLOTS_PER_BANK = _p.SLOTS_PER_BANK
+
+# Name position inside the long 0x52 payload (see microfreak.protocol).
+NAME_OFFSET = _p.NAME_OFFSET
 
 
-def addr(slot: int) -> tuple[int, int]:
+def addr(slot: int) -> Tuple[int, int]:
     """Slot number (0-based) -> (bank, position)."""
-    return slot // SLOTS_PER_BANK, slot % SLOTS_PER_BANK
+    return _p.addr(slot)
 
 
 def frame(seq: int, length: int, cmd: int, data: Iterable[int] = ()) -> List[int]:
-    return PREFIX + [seq & 0x7F, length & 0x7F, cmd & 0x7F] + [b & 0x7F for b in data] + [0xF7]
+    return list(_p.frame(seq, length, cmd, data))
 
 
 def read_name(seq: int, slot: int) -> List[int]:
-    bank, pos = addr(slot)
-    return frame(seq, 0x03, CMD_OPEN, [bank, pos, 0x00])
+    return list(_p.read_name_req(seq, slot))
 
 
 def open_dump(seq: int, slot: int) -> List[int]:
-    bank, pos = addr(slot)
-    return frame(seq, 0x01, CMD_OPEN, [bank, pos, 0x01])
+    return list(_p.open_dump_req(seq, slot))
 
 
 def next_chunk(seq: int) -> List[int]:
-    return frame(seq, 0x01, CMD_NEXT, [0x00])
+    return list(_p.pull_next_req(seq))
 
 
 @dataclass
 class Frame:
+    """A parsed frame plus the capture metadata the harness records."""
     raw: bytes
     seq: int
     length: int
@@ -96,40 +101,30 @@ class Frame:
                 f"{self.label():7s} {body}")
 
 
-def parse(raw: bytes | List[int], direction: str = "?", t: float = 0.0) -> Optional[Frame]:
-    b = bytes(raw)
-    if len(b) < 9 or b[0] != 0xF0 or b[-1] != 0xF7:
+def parse(raw: "bytes | List[int]", direction: str = "?", t: float = 0.0) -> Optional[Frame]:
+    f = _p.parse(bytes(raw))
+    if f is None:
         return None
-    if list(b[1:5]) != ARTURIA + [MICROFREAK]:
-        return None
-    return Frame(raw=b, seq=b[6], length=b[7], cmd=b[8], data=b[9:-1],
+    return Frame(raw=f.raw, seq=f.seq, length=f.length, cmd=f.cmd, data=f.data,
                  direction=direction, t=t)
 
 
-# Probed live against firmware 5.x hardware (2026-09-01), seven slots across
-# all four banks. The 0x52 reply payload is 35 bytes:
-#
-#   [0] bank  [1] pos  [2] 00  [3..7] unknown  [8] pos again
-#   [9] unknown (0 for slots <384, 1 after)  [10] unknown  [11] attribute
-#   [12..] name, NUL padded
-#
-# Bytes 1, 8 and 11 are often printable ASCII, which is why decoding the whole
-# payload leaked the slot number (doubled) and a stray character into names.
-NAME_OFFSET = 12
-
-
 def decode_name(f: Frame) -> str:
-    """Preset name out of a 0x52 reply. Printable ASCII, trimmed."""
-    body = f.data[NAME_OFFSET:].split(b"\x00")[0]
-    chars = [chr(c) for c in body if 0x20 <= c < 0x7F]
-    return "".join(chars).strip()
+    """Preset name out of a 0x52 reply. Printable ASCII, trimmed.
+
+    Delegates to the core codec (verified against the hardware fixtures in
+    tests/test_sysex.py; the core asserts parity with those same fixtures).
+    """
+    return _p._decode_name(bytes(f.data))
 
 
 def decode_param(msb: int, mid: int, lsb: int, negative: bool = False) -> float:
     """15-bit value -> the 0-100 the MicroFreak screen shows.
 
-    The published notes carry the sign outside these three bytes, so the caller
-    passes it in. Do not infer sign from bit 14 until a capture confirms it.
+    Phase-0 analysis helper; the librarian core treats blobs as opaque and
+    has no use for it. The published notes carry the sign outside these three
+    bytes, so the caller passes it in. Do not infer sign from bit 14 until a
+    capture confirms it.
     """
     raw = (msb << 8) + (mid << 7) + lsb
     if negative:
@@ -139,7 +134,12 @@ def decode_param(msb: int, mid: int, lsb: int, negative: bool = False) -> float:
 
 
 def assemble(chunks: Iterable[Frame]) -> bytes:
-    """Concatenate dump chunk payloads into the preset blob."""
+    """Concatenate dump chunk payloads into a blob.
+
+    Deliberately does NOT enforce BLOB_SIZE: the gate and replay tooling
+    assemble partial bursts and simulated (short) dumps. The librarian path
+    uses microfreak.protocol.assemble_blob, which does enforce 4672.
+    """
     out = bytearray()
     for c in chunks:
         out.extend(c.data)
@@ -147,4 +147,4 @@ def assemble(chunks: Iterable[Frame]) -> bytes:
 
 
 def digest(blob: bytes) -> str:
-    return hashlib.sha256(blob).hexdigest()
+    return _p.digest(blob)

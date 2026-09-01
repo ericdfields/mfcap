@@ -1,18 +1,25 @@
-"""CoreMIDI access, device discovery, and the read path we already understand.
+"""CoreMIDI plumbing for the capture harness: Device, Reader, port discovery.
 
-The reader here uses only the published protocol, so it is the highest
-confidence code in the toolkit - and it is also the safety rail: nothing in
-this project writes to the MicroFreak until `mfcap backup` has produced a
-complete, verified dump of every slot.
+Since phase 1 the librarian's device I/O lives in the `microfreak` core
+package (Session over an injected Transport; `mfcap backup` goes through
+microfreak.MicroFreak.backup). What stays here is the capture/gate machinery
+that predates it and still proves the protocol:
+
+- `Device`: an rtmidi connection with a SysEx mailbox and the send/drain/
+  quiet_for/ask surface that verify.replay() paces raw captured bursts over
+  (tests drive the same surface with simulated devices).
+- `Reader`: the documented read path over that surface, used by the gate to
+  read scratch slots back. It intentionally tolerates non-4672-byte blobs
+  from simulated devices, which the core's Session refuses.
 """
 from __future__ import annotations
 
-import json
 import threading
 import time
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Callable, List, Optional
+
+from microfreak.transports.rtmidi import DEVICE_HINTS
 
 from . import sysex as sx
 
@@ -20,8 +27,6 @@ try:
     import rtmidi
 except ImportError:  # surfaced properly by `mfcap doctor`
     rtmidi = None
-
-DEVICE_HINTS = ("microfreak", "micro freak", "arturia microfreak")
 
 
 class MidiUnavailable(RuntimeError):
@@ -189,43 +194,3 @@ class Reader:
             if useful[-1].cmd == sx.CMD_CHUNK_LAST:
                 return sx.assemble(chunks)
         return None
-
-
-def backup(dev: Device, out_dir: Path, slots: int = 512,
-           progress: Optional[Callable[[int, int, str], None]] = None) -> dict:
-    """Full-device backup. Also measures throughput, which the plan flagged
-    as an open UX question: how long does a 512-slot pass actually take?"""
-    out_dir = Path(out_dir)
-    (out_dir / "presets").mkdir(parents=True, exist_ok=True)
-    reader = Reader(dev)
-    index = {"created": time.strftime("%Y-%m-%dT%H:%M:%S"),
-             "slots": slots, "presets": {}, "timing": {}}
-
-    t_start = time.time()
-    name_ms, dump_ms = [], []
-    for slot in range(slots):
-        t0 = time.time()
-        nm = reader.name(slot)
-        name_ms.append((time.time() - t0) * 1000)
-
-        t0 = time.time()
-        blob = reader.preset(slot)
-        dump_ms.append((time.time() - t0) * 1000)
-
-        entry = {"slot": slot, "name": nm, "bytes": len(blob) if blob else 0,
-                 "sha256": sx.digest(blob) if blob else None}
-        if blob:
-            (out_dir / "presets" / f"{slot:03d}.bin").write_bytes(blob)
-        index["presets"][str(slot)] = entry
-        if progress:
-            progress(slot, slots, nm or "")
-
-    elapsed = time.time() - t_start
-    index["timing"] = {
-        "total_seconds": round(elapsed, 1),
-        "per_slot_seconds": round(elapsed / max(slots, 1), 3),
-        "name_ms_median": round(sorted(name_ms)[len(name_ms) // 2], 1) if name_ms else None,
-        "dump_ms_median": round(sorted(dump_ms)[len(dump_ms) // 2], 1) if dump_ms else None,
-    }
-    (out_dir / "index.json").write_text(json.dumps(index, indent=2))
-    return index
