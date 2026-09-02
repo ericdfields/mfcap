@@ -553,4 +553,30 @@ public actor Library {
         try saveCollection(coll)
         return (coll, added)
     }
+
+    /// Merge another library's collections (and their presets) into this one.
+    /// Collection-granular and idempotent: a collection whose id already exists
+    /// here is skipped, so re-running merges nothing new; blobs are
+    /// content-addressed so shared presets are stored once. Returns the number
+    /// of collections newly merged. Used to fold the bundled seed into an
+    /// existing user library without disturbing entries the user already has.
+    @discardableResult
+    public func mergeBundle(from other: Library) async throws -> Int {
+        let have = Set(try collections().map(\.id))
+        var merged = 0
+        for coll in try await other.collections() where !have.contains(coll.id) {
+            var slots: [Int: PresetRef] = [:]
+            for (slot, ref) in coll.slots {
+                let preset = try await other.presetForRef(ref)
+                let entry = try add(preset, slot: slot)
+                slots[slot] = PresetRef(sha256: entry.sha256, name: preset.name,
+                                        metaHex: ref.metaHex)
+            }
+            try saveCollection(PresetCollection(
+                id: coll.id, name: coll.name, createdAt: coll.createdAt,
+                provenance: coll.provenance, slots: slots))
+            merged += 1
+        }
+        return merged
+    }
 }

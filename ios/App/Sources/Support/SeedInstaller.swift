@@ -14,24 +14,32 @@
 // app layer never parses library files itself (Library.open owns that).
 
 import Foundation
+import FreakCore
 
 enum SeedInstaller {
     /// Bumped only if a future seed bundle must re-seed existing installs.
     static let marker = "MFSeedInstalled.v1"
+    /// v2 folds the full MCC-store seed into libraries that already existed
+    /// before the seed shipped (a fresh install gets everything via the copy
+    /// path and needs no merge).
+    static let mergeMarker = "MFSeedMerged.v2"
 
-    /// Install the bundled seed into `libraryRoot` iff it has never run and
-    /// the user has no library yet. Runs before `Library.open`.
+    /// Install the bundled seed into `libraryRoot`. On a fresh install (no
+    /// library yet) the seed is copied wholesale. On an existing library the
+    /// seed's collections are MERGED in once (idempotent, content-addressed),
+    /// never overwriting the user's own entries. Runs before `Library.open`.
     static func installIfNeeded(libraryRoot: URL,
                                 defaults: UserDefaults = .standard) {
-        guard !defaults.bool(forKey: marker) else { return }
         let fm = FileManager.default
         let indexPath = libraryRoot.appendingPathComponent("index.json").path
-        // A user library already exists — never overwrite it; just record
-        // that seeding is done so it is not attempted again.
+        // A user library already exists — never overwrite it. The bundled
+        // seed is folded in later by `mergeIfNeeded` (async, needs an open
+        // Library actor); here we only record that the copy path is done.
         if fm.fileExists(atPath: indexPath) {
             defaults.set(true, forKey: marker)
             return
         }
+        guard !defaults.bool(forKey: marker) else { return }
         // No bundle present (unit tests, preview sandbox) — leave the marker
         // unset so a real install still seeds on a later launch.
         guard let seedLibrary = bundledSeedLibrary() else { return }
@@ -44,10 +52,28 @@ enum SeedInstaller {
             }
             try fm.copyItem(at: seedLibrary, to: libraryRoot)
             defaults.set(true, forKey: marker)
+            defaults.set(true, forKey: mergeMarker)   // fresh copy already has it all
         } catch {
             // Copy failed (disk pressure, sandbox quirk): leave the library
             // absent so openOrCreate() makes an empty one — the app still
             // works, and seeding retries next launch (marker still unset).
+        }
+    }
+
+    /// Fold the bundled seed's collections into an already-open user library,
+    /// once (guarded by the v2 marker). Idempotent and content-addressed;
+    /// never touches entries the user already has. A fresh install took the
+    /// copy path and set the marker there, so this is a no-op for it.
+    static func mergeIfNeeded(into library: Library,
+                              defaults: UserDefaults = .standard) async {
+        guard !defaults.bool(forKey: mergeMarker) else { return }
+        guard let seedLibrary = bundledSeedLibrary() else { return }
+        do {
+            let seed = try Library.open(at: seedLibrary)
+            try await library.mergeBundle(from: seed)
+            defaults.set(true, forKey: mergeMarker)
+        } catch {
+            // Leave the marker unset so the merge retries on a later launch.
         }
     }
 

@@ -199,9 +199,16 @@ final class AppModel {
             self?.recomputeSync()
         }
         libraryModel.openOrCreate()
-        // Collections live in the library folder (data-model spec §4) — mirror
-        // them once the library is open; refreshed again after any mutation.
-        Task { await collectionsModel.refresh(from: libraryModel.library) }
+        // Fold the bundled seed into an existing library once (fresh installs
+        // already got it via the copy path), then mirror collections. Runs off
+        // the init path because the merge needs the open Library actor.
+        Task { [seedFromBundle] in
+            if seedFromBundle, let lib = libraryModel.library {
+                await SeedInstaller.mergeIfNeeded(into: lib)
+                await libraryModel.refresh()
+            }
+            await collectionsModel.refresh(from: libraryModel.library)
+        }
         // Drag-out .mfpreset export resolves bytes through this model.
         PresetTransferExporter.model = self
         Task {

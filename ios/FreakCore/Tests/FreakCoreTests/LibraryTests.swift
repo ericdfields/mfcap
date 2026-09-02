@@ -300,3 +300,45 @@ struct LibraryTests {
         #expect(Attributes.allTags(entries) == ["a", "b", "c"])
     }
 }
+
+@Suite("Library merge")
+struct LibraryMergeTests {
+    private func blob(_ tag: UInt8) -> Data { Data(repeating: tag, count: 4672) }
+
+    @Test func mergeIsIdempotentAndPreservesUserData() async throws {
+        let seedRoot = tempDir("merge-seed")
+        let userRoot = tempDir("merge-user")
+        defer { try? FileManager.default.removeItem(at: seedRoot)
+                try? FileManager.default.removeItem(at: userRoot) }
+        let seed = try Library.create(at: seedRoot)
+        _ = try await seed.collectionFromBank(
+            [BankItem(slot: 0, name: "A", meta: Data(count: 9), blob: blob(1)),
+             BankItem(slot: 1, name: "B", meta: Data(count: 9), blob: blob(2))],
+            name: "Bank One", source: "one")
+        _ = try await seed.collectionFromBank(
+            [BankItem(slot: 5, name: "C", meta: Data(count: 9), blob: blob(3))],
+            name: "Bank Two", source: "two")
+
+        let user = try Library.create(at: userRoot)
+        _ = try await user.add(try Preset(name: "MyOwn", blob: blob(9), meta: Data(count: 9)),
+                               slot: 100)
+        let before = await user.entries().count
+
+        let n1 = try await user.mergeBundle(from: seed)
+        #expect(n1 == 2)
+        #expect(try await user.collections().count == 2)
+        #expect(await user.entries().count == before + 3)
+        #expect(await user.entries().contains { $0.name == "MyOwn" })
+
+        let n2 = try await user.mergeBundle(from: seed)   // idempotent
+        #expect(n2 == 0)
+        #expect(try await user.collections().count == 2)
+        #expect(await user.entries().count == before + 3)
+
+        // every merged ref still resolves after reopen
+        let reopened = try Library.open(at: userRoot)
+        for c in try await reopened.collections() {
+            for ref in c.slots.values { _ = try await reopened.presetForRef(ref) }
+        }
+    }
+}

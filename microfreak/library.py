@@ -366,6 +366,30 @@ class Library:
                 except OSError:
                     pass
 
+    def merge_bundle(self, other: "Library") -> int:
+        """Merge another library's collections (and their presets) into this
+        one. Collection-granular and idempotent: a collection whose id already
+        exists here is skipped, so re-running merges nothing new. Blobs are
+        content-addressed, so shared presets are stored once. Returns the
+        number of collections newly merged.
+
+        Used to fold the bundled seed into an existing user library without
+        disturbing entries the user already has."""
+        have = {c.id for c in self.collections()}
+        merged = 0
+        for coll in other.collections():
+            if coll.id in have:
+                continue
+            slots: Dict[int, PresetRef] = {}
+            for slot, ref in coll.slots.items():
+                preset = other.preset_for_ref(ref)
+                entry = self.add(preset, slot=slot)
+                slots[slot] = PresetRef(sha256=entry.sha256, name=preset.name,
+                                        meta_hex=ref.meta_hex)
+            self.save_collection(dataclasses.replace(coll, slots=slots))
+            merged += 1
+        return merged
+
     def preset_for_ref(self, ref: PresetRef) -> Preset:
         """Read blobs/<ref.sha256>.bin, re-hash (IntegrityError on rot/missing),
         build ref.to_preset(blob). The standard resolver for apply."""
