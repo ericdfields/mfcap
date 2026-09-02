@@ -342,3 +342,37 @@ struct LibraryMergeTests {
         }
     }
 }
+
+@Suite("Library dedupe")
+struct LibraryDedupeTests {
+    private func blob(_ t: UInt8) -> Data { Data(repeating: t, count: 4672) }
+
+    @Test func dedupeAddReusesAndRepairCollapses() async throws {
+        let root = tempDir("dedupe"); defer { try? FileManager.default.removeItem(at: root) }
+        let lib = try Library.create(at: root)
+        // dedupe:true add reuses same (sha,name)
+        for _ in 0..<3 {
+            _ = try await lib.add(try Preset(name: "Dup", blob: blob(7), meta: Data(count: 9)),
+                                  dedupe: true)
+        }
+        #expect(await lib.entries().count == 1)
+        _ = try await lib.add(try Preset(name: "Other", blob: blob(7), meta: Data(count: 9)),
+                              dedupe: true)     // same blob, different name -> kept
+        #expect(await lib.entries().count == 2)
+
+        // repair: plain adds create exact dups, dedupe() collapses + merges attrs
+        let root2 = tempDir("dedupe2"); defer { try? FileManager.default.removeItem(at: root2) }
+        let lib2 = try Library.create(at: root2)
+        let a = try await lib2.add(try Preset(name: "X", blob: blob(1), meta: Data(count: 9)),
+                                   slot: 5)
+        _ = try await lib2.setFavorite(id: a.id, to: true)
+        _ = try await lib2.add(try Preset(name: "X", blob: blob(1), meta: Data(count: 9)),
+                               tags: ["pad"])       // exact dup, no dedupe
+        #expect(await lib2.entries().count == 2)
+        let removed = try await lib2.dedupe()
+        #expect(removed == 1)
+        let e = try #require(await lib2.entries().first)
+        #expect(await lib2.entries().count == 1)
+        #expect(e.favorite && e.tags.contains("pad") && e.slot == 5)
+    }
+}

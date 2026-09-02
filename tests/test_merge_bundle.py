@@ -49,5 +49,34 @@ def run() -> None:
     print("PASS  every merged collection ref resolves after reopen")
 
 
+def run_dedupe() -> None:
+    import tempfile as _tf
+    from microfreak.library import Library as _L
+    from microfreak.model import Preset as _P, Category as _C
+    root = Path(_tf.mkdtemp())
+    lib = _L.create(root / "d")
+    # same content+name added three times (as merge/import would) collapses to 1
+    for _ in range(3):
+        lib.add(_P(name="Dup", blob=b"\x07"*4672, meta=b"\x00"*9), slot=None, dedupe=True)
+    assert len(lib.entries()) == 1, [e.name for e in lib.entries()]
+    # a genuinely different name with same blob stays separate
+    lib.add(_P(name="Other", blob=b"\x07"*4672, meta=b"\x00"*9), dedupe=True)
+    assert len(lib.entries()) == 2
+    print("PASS  dedupe add reuses (sha,name); distinct name kept")
+
+    # repair pass on a library that already has exact dups
+    lib2 = _L.create(root / "r")
+    a = lib2.add(_P(name="X", blob=b"\x01"*4672, meta=b"\x00"*9), slot=5)
+    lib2.set_favorite(a.id, True)
+    lib2.add(_P(name="X", blob=b"\x01"*4672, meta=b"\x00"*9), tags=["pad"])  # dup, no dedupe
+    assert len(lib2.entries()) == 2
+    removed = lib2.dedupe()
+    assert removed == 1 and len(lib2.entries()) == 1
+    e = lib2.entries()[0]
+    assert e.favorite and "pad" in e.tags and e.slot == 5, e  # attributes merged
+    print("PASS  dedupe() repair collapses exact dups, merges attributes")
+
+
 if __name__ == "__main__":
     run()
+    run_dedupe()

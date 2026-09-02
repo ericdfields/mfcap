@@ -77,6 +77,24 @@ enum SeedInstaller {
         }
     }
 
+    /// One-time cleanup for libraries seeded/merged before dedup shipped: an
+    /// early merge stacked the seed on top of a device-import, leaving exact
+    /// duplicate patches (same content + name). Collapse them once.
+    static let dedupeMarker = "MFDeduped.v1"
+
+    @discardableResult
+    static func dedupeIfNeeded(_ library: Library,
+                               defaults: UserDefaults = .standard) async -> Bool {
+        guard !defaults.bool(forKey: dedupeMarker) else { return false }
+        do {
+            let removed = try await library.dedupe()
+            defaults.set(true, forKey: dedupeMarker)
+            return removed > 0
+        } catch {
+            return false   // retry next launch (marker stays unset)
+        }
+    }
+
     /// The `library/` subfolder of the bundled `SeedBanks` folder reference,
     /// or nil when the resource is not in the bundle.
     static func bundledSeedLibrary() -> URL? {

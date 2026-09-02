@@ -205,6 +205,8 @@ final class AppModel {
         Task { [seedFromBundle] in
             if seedFromBundle, let lib = libraryModel.library {
                 await SeedInstaller.mergeIfNeeded(into: lib)
+                // One-time repair for installs merged before dedup shipped.
+                await SeedInstaller.dedupeIfNeeded(lib)
                 await libraryModel.refresh()
             }
             await collectionsModel.refresh(from: libraryModel.library)

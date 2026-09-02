@@ -74,6 +74,14 @@ public enum Attributes {
     }
 }
 
+/// Concatenate two tag lists preserving first-seen order, dropping duplicates.
+fileprivate func orderedUnion(_ a: [String], _ b: [String]) -> [String] {
+    var seen = Set<String>()
+    var out: [String] = []
+    for t in a + b where seen.insert(t).inserted { out.append(t) }
+    return out
+}
+
 public actor Library {
     public nonisolated let root: URL
     private var entriesList: [LibraryEntry]
@@ -262,11 +270,25 @@ public actor Library {
     @discardableResult
     public func add(_ preset: Preset, slot: Int? = nil, tags: [String] = [],
                     category: Category = .uncategorized,
-                    favorite: Bool = false) throws -> LibraryEntry {
+                    favorite: Bool = false,
+                    dedupe: Bool = false) throws -> LibraryEntry {
         if let slot, !(0..<Wire.slots).contains(slot) {
             throw FreakError.slotOutOfRange(slot: slot)
         }
         let sha = try ensureBlob(preset.blob)
+        if dedupe, let i = entriesList.firstIndex(
+            where: { $0.sha256 == sha && $0.name == preset.name }) {
+            let e = entriesList[i]
+            let newSlot: Int? = e.slot ?? slot
+            let merged = e.with(
+                slot: newSlot,
+                tags: orderedUnion(e.tags, tags),
+                category: e.category == .uncategorized ? category : e.category,
+                favorite: e.favorite || favorite)
+            entriesList[i] = merged
+            try save()
+            return merged
+        }
         let entry = LibraryEntry(
             // uuid4 hex, lowercase, 32 chars, NO hyphens (Python uuid4().hex)
             id: UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased(),
@@ -279,6 +301,35 @@ public actor Library {
         entriesList.append(entry)
         try save()
         return entry
+    }
+
+    /// Collapse entries with identical (sha256, name) into one, merging
+    /// attributes (union tags, OR favorite, prefer a set category, keep the
+    /// first slot). Safe for collections, which reference presets by sha, not
+    /// by entry id. Returns the number of entries removed.
+    @discardableResult
+    public func dedupe() throws -> Int {
+        var keep: [String: LibraryEntry] = [:]      // "sha\u{0}name" -> entry
+        var order: [String] = []
+        for e in entriesList {
+            let key = e.sha256 + "\u{0}" + e.name
+            if let p = keep[key] {
+                keep[key] = p.with(
+                    slot: p.slot ?? e.slot,
+                    tags: orderedUnion(p.tags, e.tags),
+                    category: p.category == .uncategorized ? e.category : p.category,
+                    favorite: p.favorite || e.favorite)
+            } else {
+                keep[key] = e
+                order.append(key)
+            }
+        }
+        let removed = entriesList.count - order.count
+        if removed > 0 {
+            entriesList = order.map { keep[$0]! }
+            try save()
+        }
+        return removed
     }
 
     /// Set the (editable) category attribute. Rewrites the index atomically.
@@ -543,7 +594,7 @@ public actor Library {
             }
             let meta = item.meta.count == 9 ? item.meta : Data(count: 9)
             let preset = try Preset(name: item.name, blob: blob, meta: meta)
-            let entry = try add(preset, slot: slot)      // Uncategorized default
+            let entry = try add(preset, slot: slot, dedupe: true)   // unique catalog
             slots[slot] = PresetRef(sha256: entry.sha256, name: preset.name,
                                     metaHex: meta.hexString)
             added.append(entry)
@@ -568,7 +619,7 @@ public actor Library {
             var slots: [Int: PresetRef] = [:]
             for (slot, ref) in coll.slots {
                 let preset = try await other.presetForRef(ref)
-                let entry = try add(preset, slot: slot)
+                let entry = try add(preset, slot: slot, dedupe: true)
                 slots[slot] = PresetRef(sha256: entry.sha256, name: preset.name,
                                         metaHex: ref.metaHex)
             }

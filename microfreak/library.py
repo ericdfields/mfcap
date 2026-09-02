@@ -195,12 +195,27 @@ class Library:
     def add(self, preset: Preset, *, slot: Optional[int] = None,
             tags: Sequence[str] = (),
             category: Category = Category.UNCATEGORIZED,
-            favorite: bool = False) -> LibraryEntry:
-        """Blob written iff absent; always a new entry (two entries may share
-        one blob sha under different names)."""
+            favorite: bool = False, dedupe: bool = False) -> LibraryEntry:
+        """Blob written iff absent; a new entry unless `dedupe` and an entry
+        with the same (sha256, name) already exists, in which case that entry
+        is reused (attributes merged) so the library stays a catalog of unique
+        patches. Two entries may still share one blob under different names."""
         if slot is not None and not 0 <= slot < SLOTS:
             raise SlotOutOfRangeError(slot)
         sha = self._ensure_blob(preset.blob)
+        if dedupe:
+            for i, e in enumerate(self._entries):
+                if e.sha256 == sha and e.name == preset.name:
+                    merged = dataclasses.replace(
+                        e,
+                        slot=e.slot if e.slot is not None else slot,
+                        tags=tuple(dict.fromkeys((*e.tags, *tags))),
+                        favorite=e.favorite or bool(favorite),
+                        category=(category if e.category == Category.UNCATEGORIZED
+                                  else e.category))
+                    self._entries[i] = merged
+                    self._save()
+                    return merged
         entry = LibraryEntry(id=uuid.uuid4().hex, name=preset.name,
                              sha256=sha, meta_hex=bytes(preset.meta).hex(),
                              slot=slot,
@@ -212,6 +227,33 @@ class Library:
         self._entries.append(entry)
         self._save()
         return entry
+
+    def dedupe(self) -> int:
+        """Collapse entries with identical (sha256, name) into one, merging
+        attributes (union tags, OR favorite, prefer a set category, keep the
+        first slot). Safe for collections, which reference presets by sha, not
+        by entry id. Returns the number of entries removed."""
+        keep: Dict[tuple, LibraryEntry] = {}
+        order: List[tuple] = []
+        for e in self._entries:
+            key = (e.sha256, e.name)
+            if key not in keep:
+                keep[key] = e
+                order.append(key)
+            else:
+                p = keep[key]
+                keep[key] = dataclasses.replace(
+                    p,
+                    slot=p.slot if p.slot is not None else e.slot,
+                    tags=tuple(dict.fromkeys((*p.tags, *e.tags))),
+                    favorite=p.favorite or e.favorite,
+                    category=(e.category if p.category == Category.UNCATEGORIZED
+                              else p.category))
+        removed = len(self._entries) - len(order)
+        if removed:
+            self._entries = [keep[k] for k in order]
+            self._save()
+        return removed
 
     def set_category(self, entry_id: str, category: Category) -> LibraryEntry:
         return self._replace_entry(entry_id, category=category)
@@ -383,7 +425,7 @@ class Library:
             slots: Dict[int, PresetRef] = {}
             for slot, ref in coll.slots.items():
                 preset = other.preset_for_ref(ref)
-                entry = self.add(preset, slot=slot)
+                entry = self.add(preset, slot=slot, dedupe=True)
                 slots[slot] = PresetRef(sha256=entry.sha256, name=preset.name,
                                         meta_hex=ref.meta_hex)
             self.save_collection(dataclasses.replace(coll, slots=slots))
@@ -444,7 +486,7 @@ class Library:
                 continue     # empty/Init-only slot, or unplaceable filename
             meta = bytes(item.meta) if len(item.meta) == 9 else b"\x00" * 9
             preset = Preset(name=item.name, blob=item.blob, meta=meta)
-            entry = self.add(preset, slot=item.slot)     # Uncategorized default
+            entry = self.add(preset, slot=item.slot, dedupe=True)   # unique catalog
             slots[item.slot] = PresetRef(sha256=entry.sha256, name=preset.name,
                                          meta_hex=meta.hex())
             added.append(entry)
