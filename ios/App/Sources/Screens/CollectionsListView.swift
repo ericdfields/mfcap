@@ -60,9 +60,13 @@ struct CollectionsListView: View {
                             in: model.libraryModel.library) }
                     } cancel: { renamingID = nil }
                 } else {
-                    CollectionRowView(collection: coll)
+                    // The sidebar no longer duplicates this list, so the row
+                    // itself has to say which collection the detail column is
+                    // showing.
+                    CollectionRowView(
+                        collection: coll,
+                        isOpen: model.detail == .collection(id: coll.id))
                         .onTapGesture {
-                            model.sidebar = .collection(id: coll.id)
                             model.detail = .collection(id: coll.id)
                         }
                         .contextMenu { rowMenu(coll) }

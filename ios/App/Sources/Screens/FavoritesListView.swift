@@ -18,7 +18,7 @@ struct FavoritesListView: View {
     var body: some View {
         @Bindable var libraryModel = model.libraryModel
         Group {
-            if model.libraryModel.favorites.isEmpty
+            if !model.libraryModel.hasAnyFavorite
                 && model.libraryModel.categoryFilter == nil
                 && model.libraryModel.tagFilter.isEmpty {
                 emptyState
@@ -29,8 +29,14 @@ struct FavoritesListView: View {
         .navigationTitle("Favorites")
         .searchable(text: $libraryModel.searchText, prompt: "Name or tag")
         .safeAreaInset(edge: .top, spacing: 0) { CategoryFilterBar() }
-        .onAppear { model.libraryModel.favoritesOnly = true }
-        .onDisappear { model.libraryModel.favoritesOnly = false }
+        // `favoritesOnly` is owned by RootView's selection change — setting it
+        // from onAppear ran a full unfiltered body pass first, then threw it
+        // away (and could leave the shared flag stuck on for All Presets).
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                AuditionButton { model.auditionRequestForFavorites() }
+            }
+        }
         .alert(item: $deleteCandidate) { entry in
             Alert(
                 title: Text("Remove '\(entry.name)' from the library?"),
@@ -44,10 +50,15 @@ struct FavoritesListView: View {
     }
 
     private var list: some View {
-        List {
+        let badges = model.slots.syncBadges
+        let corrupt = model.libraryModel.corruptEntries
+        return List {
             ForEach(model.libraryModel.filtered(tag: nil)) { entry in
                 LibraryRowView(entry: entry, renamingEntry: $renamingEntry,
-                               requestDelete: { deleteCandidate = $0 })
+                               requestDelete: { deleteCandidate = $0 },
+                               syncHint: LibraryRowView.syncHint(for: entry,
+                                                                 badges: badges),
+                               corruptDetail: corrupt[entry.id])
             }
         }
         .listStyle(.plain)

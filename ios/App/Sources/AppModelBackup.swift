@@ -85,6 +85,17 @@ extension AppModel {
             onComplete(.failure("No device connected"))
             return
         }
+        // A full read taken mid-audition would record the audition preset as
+        // the borrowed slot's real contents (UX addendum §30.4) — into the
+        // backup, into the hashed tier Apply plans diff against, and into any
+        // collection snapshotted from it. The interlock lives HERE, at the one
+        // pass every caller shares: Back Up Now, Resume (banner, row button,
+        // progress sheet), Read Device & Compare, and Create from Device.
+        if let reason = auditionBlockReason() {
+            toasts.show(reason, isError: true)
+            onComplete(.failure(reason))
+            return
+        }
         let dest: URL
         let folderName: String
         if let resumeFolder,
@@ -180,6 +191,12 @@ extension AppModel {
     func requestRestore(from folderName: String,
                         scope: RestorePlanRequest.Scope = .fullDevice,
                         crossIdentityConfirmed: Bool = false) {
+        // Same reason as Apply: a restore writing the borrowed slot would be
+        // silently reverted by the audition's own restore.
+        if let reason = auditionBlockReason() {
+            toasts.show(reason, isError: true)
+            return
+        }
         if !crossIdentityConfirmed,
            let summary = backups.summary(folderName),
            summary.identity.isPractice != deviceIdentity.isPractice {

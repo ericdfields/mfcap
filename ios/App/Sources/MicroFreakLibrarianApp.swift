@@ -40,10 +40,12 @@ struct FreakLibrarianApp: App {
                     .keyboardShortcut("1", modifiers: .command)
                 Button("Library") { model.sidebar = .library(tag: nil) }
                     .keyboardShortcut("2", modifiers: .command)
-                Button("Sync") { model.sidebar = .sync }
+                Button("Collections") { model.sidebar = .collections }
                     .keyboardShortcut("3", modifiers: .command)
-                Button("Backups") { model.sidebar = .backups }
+                Button("Sync") { model.sidebar = .sync }
                     .keyboardShortcut("4", modifiers: .command)
+                Button("Backups") { model.sidebar = .backups }
+                    .keyboardShortcut("5", modifiers: .command)
             }
         }
     }

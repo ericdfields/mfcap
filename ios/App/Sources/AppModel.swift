@@ -38,9 +38,10 @@ enum SidebarSelection: Hashable {
     case device
     case library(tag: String?)
     case favorites                     // UX addendum §24.3
-    case audition                      // play through unrated presets, one tap each
-    case collections                   // UX addendum §26 (section / All Collections)
-    case collection(id: String)        // UX addendum §26 (one collection child)
+    // Audition is not a destination — it is an action on the list you are
+    // looking at (UX addendum §30). Collections are a single destination; the
+    // content column lists them, the detail column opens one.
+    case collections                   // UX addendum §26
     case sync
     case backups
 }
@@ -164,6 +165,11 @@ final class AppModel {
     var slotPickerRequest: SlotPickerRequest?
     /// "MicroFreak detected — Connect?" (hot-plug; never auto-connects, UX §12).
     var hotPlugBanner: String?
+    /// A borrowed audition slot whose original was never written back (the app
+    /// was terminated mid-session, or the user gave up on restoring it now).
+    /// Loaded from disk at launch; the passive banner offers to put it back.
+    /// Written only by the loan helpers in AppModelAudition.swift.
+    var pendingAuditionLoan: AuditionLoan?
 
     // Collections (UX addendum §26, §27).
     /// The create-from-device name prompt (NewCollectionSheet).
@@ -192,6 +198,9 @@ final class AppModel {
         self.fastPracticeTiming = UserDefaults.standard
             .bool(forKey: "MFFastPracticeTiming")
         self.history = SlotHistoryStore(url: paths.historyURL)
+        // A record here means a previous run borrowed a slot and never got it
+        // back — the app owes the user that preset before anything else.
+        self.pendingAuditionLoan = AuditionLoanStore.load(paths.auditionLoanURL)
         try? FileManager.default.createDirectory(
             at: paths.backupsRoot, withIntermediateDirectories: true)
         libraryModel = LibraryModel(root: paths.libraryRoot,
@@ -274,15 +283,35 @@ final class AppModel {
     var connectFailure: FreakError?
 
     func disconnect() {
+        // Deliberately dropping the device out from under a borrowed slot is
+        // refused while that slot can still be put back through it.
+        if device != nil, let reason = audition.blockReason {
+            toasts.show(reason, isError: true)
+            return
+        }
         teardownDevice()
         connection = .noDevice(banner: nil)
     }
 
-    /// Switching devices mid-operation is refused (UX §11, §12).
+    /// Switching devices mid-operation is refused (UX §11, §12) — and so is
+    /// switching while an audition still has one of the user's slots on loan
+    /// AND a device to put it back through.
+    ///
+    /// The "and a device" half is load-bearing. Blocking unconditionally was a
+    /// trap with no exit: a transport loss mid-audition cleared `device`, so
+    /// Stop refused ("reconnect first") while every reconnect route refused
+    /// ("stop the audition first"), and the only copy of the user's preset
+    /// lived in memory. With no device attached there is nothing to protect
+    /// here — reconnecting IS the route back, and the session (plus its
+    /// on-disk loan record) survives the switch untouched.
     func canSwitchDevice() -> Bool {
         guard operations.active.isEmpty else {
             toasts.show("Finish or cancel the running operation before "
                 + "switching devices.", isError: true)
+            return false
+        }
+        if device != nil, let reason = audition.blockReason {
+            toasts.show(reason, isError: true)
             return false
         }
         return true
@@ -470,6 +499,10 @@ final class AppModel {
     /// marked stale; a resumable backup shows Resume on reconnect (UX §14).
     func handleTransportLoss(_ error: FreakError) {
         toasts.show(error.userMessage, isError: true)
+        // A live audition keeps its session (and `needsRestore`) across the
+        // loss — restoring is impossible NOW, not forever. The banner stays up
+        // and Stop works again once a device is back.
+        audition.deviceLost()
         if let old = device {
             Task { await old.close() }
         }

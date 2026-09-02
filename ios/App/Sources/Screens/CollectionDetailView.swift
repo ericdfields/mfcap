@@ -42,6 +42,11 @@ struct CollectionDetailView: View {
         }
         .listStyle(.insetGrouped)
         .safeAreaInset(edge: .bottom) { applyBar(coll) }
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                AuditionButton { model.auditionRequest(for: coll) }
+            }
+        }
         .task(id: coll.id) { readiness = model.collectionChangeSummary(coll) }
         .onChange(of: model.slots.hashedAsOf) { _, _ in
             readiness = model.collectionChangeSummary(coll)
@@ -128,6 +133,11 @@ struct CollectionDetailView: View {
 
     private func actionsSection(_ coll: PresetCollection) -> some View {
         Section {
+            // Discoverable in prose, not only as a toolbar glyph: this is the
+            // "audition just this pack" route.
+            AuditionButton(titleKey: "Audition this collection…") {
+                model.auditionRequest(for: coll)
+            }
             Button {
                 Task { await model.collectionsModel.duplicate(
                     id: coll.id, in: model.libraryModel.library) }
@@ -147,7 +157,9 @@ struct CollectionDetailView: View {
 
     private func applyBar(_ coll: PresetCollection) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            if let readiness {
+            if let reason = model.auditionBlockReason() {
+                Text(reason).font(.caption).foregroundStyle(.secondary)
+            } else if let readiness {
                 Text(readiness).font(.caption).foregroundStyle(.secondary)
             } else if !model.connection.hasDevice {
                 Text("Connect a device to switch to this collection.")
@@ -163,7 +175,8 @@ struct CollectionDetailView: View {
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
-            .disabled(!model.connection.hasDevice)
+            .disabled(!model.connection.hasDevice
+                      || model.auditionBlockReason() != nil)
         }
         .padding(16)
         .background(.thinMaterial)

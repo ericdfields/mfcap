@@ -3,8 +3,9 @@
 // Names-first: rows render instantly from cache, names stream in during the
 // ~2 s names pass (shimmer, not a wait screen), search is cache-only and
 // never reads, and rows NEVER trigger blob reads — judgment costs are always
-// explicit. Bank sections have sticky headers with judged counts; sidebar
-// bank rows jump here via ScrollViewReader.
+// explicit. Bank sections have sticky headers with judged counts; the "Jump to
+// Bank" toolbar menu (the sidebar's bank rows are gone) scrolls to them via
+// ScrollViewReader.
 
 import SwiftUI
 
@@ -50,8 +51,11 @@ struct SlotListView: View {
 
     @ViewBuilder
     private func bankSection(_ bank: Int) -> some View {
-        let visible = Set(model.slots.filteredSlots.map(\.raw))
-        let bankSlots = SlotID.bankSlots(bank).filter { visible.contains($0.raw) }
+        // Read, never derived: this used to build a 512-element Set and
+        // re-filter a 128-slot bank list on every body pass, four times over,
+        // with one pass per streamed name during the names read.
+        let bankSlots = model.slots.filteredByBank.indices.contains(bank)
+            ? model.slots.filteredByBank[bank] : []
         if !bankSlots.isEmpty {
             Section {
                 ForEach(bankSlots) { slot in
@@ -100,6 +104,19 @@ struct SlotListView: View {
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         ToolbarItemGroup(placement: .primaryAction) {
+            // Bank jumps used to be sidebar rows — a scroll command filed as
+            // four permanent destinations. They belong on the screen they
+            // scroll, beside the sticky bank headers they land on.
+            Menu {
+                ForEach(0..<SlotID.Layout.banks, id: \.self) { bank in
+                    Button(SlotID.bankLabel(bank)) {
+                        model.bankJumpRequest = bank
+                    }
+                }
+            } label: {
+                Label("Jump to Bank", systemImage: "square.grid.4x3.fill")
+            }
+
             Button {
                 _ = model.refreshNames()
             } label: {
@@ -125,8 +142,10 @@ struct SlotListView: View {
                 Label("Back Up Now", systemImage: "externaldrive.badge.plus")
             }
             .disabled(!model.connection.hasDevice
-                      || model.operations.exclusiveLongOp != nil)
-            .help("Reads all 512 slots, about 3½ minutes. "
+                      || model.operations.exclusiveLongOp != nil
+                      || model.auditionBlockReason() != nil)
+            .help(model.auditionBlockReason()
+                  ?? "Reads all 512 slots, about 3½ minutes. "
                   + "The device is never modified by a backup.")
         }
     }

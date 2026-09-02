@@ -72,7 +72,13 @@ final class SlotBrowserModel {
 
     var refreshingNames = false
     var namesError: String?
-    var searchText = ""
+    /// Cache-only search over names and slot numbers. Never reads the device.
+    var searchText = "" {
+        didSet {
+            guard oldValue != searchText else { return }
+            recomputeFiltered()
+        }
+    }
     /// Per-slot sync badges, mirrored from SyncModel's current diff.
     private(set) var syncBadges: [Int: SlotStatus] = [:]
 
@@ -124,28 +130,77 @@ final class SlotBrowserModel {
                                  exclude: excluding).map(SlotID.init)
     }
 
-    // ------------------------------------------------------------- search
+    // -------------------------------------------------- derived, stored once
+    //
+    // These were computed properties read straight from the slot list's body:
+    // `filteredSlots` mapped or filtered all 512 rows on EVERY access and the
+    // list built a 512-element Set from it once per bank per body pass, while
+    // `bankSummary` did 128 lookups plus two filters per bank per pass — with
+    // one body pass per streamed name during the ~2 s names pass. They are now
+    // recomputed only when their inputs actually change, and reassigned only
+    // when the value actually differs (Observation has no equality check of
+    // its own, so an identical reassignment still invalidates every observer).
 
-    /// Cache-only filtering: name substring + slot number. Never reads.
-    var filteredSlots: [SlotID] {
-        let query = searchText.trimmingCharacters(in: .whitespaces)
-        guard !query.isEmpty else { return rows.map(\.slot) }
-        let lowered = query.lowercased()
-        return rows.filter { row in
-            if let name = row.name, name.lowercased().contains(lowered) {
-                return true
-            }
-            return String(row.slot.display).contains(query)
-        }.map(\.slot)
-    }
+    /// The slots matching the current search, ascending.
+    private(set) var filteredSlots: [SlotID] = SlotID.all
+    /// The same set already split by bank — what the list renders per section.
+    private(set) var filteredByBank: [[SlotID]] =
+        (0..<SlotID.Layout.banks).map { SlotID.bankSlots($0) }
+    /// "97 presets · 31 empty" per bank once judged; nil before.
+    private(set) var bankSummaries: [String?] =
+        Array(repeating: nil, count: SlotID.Layout.banks)
 
     /// "97 presets · 31 empty" once judged; nil before.
     func bankSummary(_ bank: Int) -> String? {
-        guard hasJudgments else { return nil }
-        let bankRows = SlotID.bankSlots(bank).compactMap { record($0) }
-        let empty = bankRows.filter { $0.judgment.isExpendable }.count
-        let presets = bankRows.filter { $0.judgment == .real }.count
-        return "\(presets) presets · \(empty) empty"
+        bankSummaries.indices.contains(bank) ? bankSummaries[bank] : nil
+    }
+
+    /// Cache-only filtering: name substring + slot number. Never reads.
+    private func recomputeFiltered() {
+        let query = searchText.trimmingCharacters(in: .whitespaces)
+        let matches: [SlotID]
+        if query.isEmpty {
+            matches = SlotID.all
+        } else {
+            let lowered = query.lowercased()
+            matches = rows.filter { row in
+                if let name = row.name, name.lowercased().contains(lowered) {
+                    return true
+                }
+                return String(row.slot.display).contains(query)
+            }.map(\.slot)
+        }
+        guard matches != filteredSlots else { return }
+        filteredSlots = matches
+        var byBank = Array(repeating: [SlotID](),
+                           count: SlotID.Layout.banks)
+        for slot in matches where byBank.indices.contains(slot.bank) {
+            byBank[slot.bank].append(slot)
+        }
+        filteredByBank = byBank
+    }
+
+    private func recomputeBankSummaries() {
+        guard hasJudgments else {
+            let blank = [String?](repeating: nil, count: SlotID.Layout.banks)
+            if bankSummaries != blank { bankSummaries = blank }
+            return
+        }
+        var presets = [Int](repeating: 0, count: SlotID.Layout.banks)
+        var empty = [Int](repeating: 0, count: SlotID.Layout.banks)
+        for row in rows {
+            let bank = row.slot.bank
+            guard presets.indices.contains(bank) else { continue }
+            if row.judgment.isExpendable {
+                empty[bank] += 1
+            } else if row.judgment == .real {
+                presets[bank] += 1
+            }
+        }
+        let summaries: [String?] = (0..<SlotID.Layout.banks).map {
+            "\(presets[$0]) presets · \(empty[$0]) empty"
+        }
+        if bankSummaries != summaries { bankSummaries = summaries }
     }
 
     // ------------------------------------------------------------ applying
@@ -156,6 +211,10 @@ final class SlotBrowserModel {
         rows[slot.raw].name = name
         rows[slot.raw].nameFailed = false
         rows[slot.raw].lastConfirmed = Date()
+        // Only a live search can change under a streaming name; without one
+        // the filter is every slot and re-deriving it 512 times would be the
+        // per-render cost this stored form exists to remove.
+        if !searchText.isEmpty { recomputeFiltered() }
     }
 
     /// A completed snapshot (names-only or hashed) lands whole.
@@ -188,6 +247,7 @@ final class SlotBrowserModel {
             hashedProvenance = provenance
         }
         stale = false
+        recomputeFiltered()
         recomputeJudgments()
     }
 
@@ -199,6 +259,7 @@ final class SlotBrowserModel {
         rows[slot.raw].sha256 = preset.sha256
         rows[slot.raw].meta = preset.meta
         rows[slot.raw].lastConfirmed = Date()
+        recomputeFiltered()
         recomputeJudgments()
     }
 
@@ -213,6 +274,7 @@ final class SlotBrowserModel {
         rows[slot.raw].lastConfirmed = Date()
         rows[slot.raw].torn = false
         rows[slot.raw].verifyFailed = false
+        recomputeFiltered()
         recomputeJudgments()
     }
 
@@ -245,6 +307,7 @@ final class SlotBrowserModel {
         rows[slot.raw].name = name
         rows[slot.raw].nameFailed = false
         rows[slot.raw].lastConfirmed = Date()
+        recomputeFiltered()
         recomputeJudgments()
     }
 
@@ -283,6 +346,8 @@ final class SlotBrowserModel {
         stale = false
         namesError = nil
         syncBadges = [:]
+        recomputeFiltered()
+        recomputeJudgments()
     }
 
     // ---------------------------------------------------------- judgments
@@ -320,5 +385,6 @@ final class SlotBrowserModel {
             }
             rows[index] = row
         }
+        recomputeBankSummaries()
     }
 }

@@ -54,7 +54,7 @@ struct LibraryListView: View {
                 guard !tag.isEmpty else { return }
                 let ids = Array(selectedIDs)
                 Task {
-                    for id in ids { await model.libraryModel.addTag(id: id, tag) }
+                    await model.libraryModel.addTag(ids: ids, tag)
                     model.toasts.show("Tagged \(ids.count) presets '\(tag)'.")
                 }
                 endSelecting()
@@ -88,10 +88,18 @@ struct LibraryListView: View {
     // ---------------------------------------------------------------- list
 
     private var entryList: some View {
-        List {
+        // Read the two wholesale-reassigned dictionaries ONCE per list body
+        // instead of once per realized row: `syncBadges` is replaced entirely
+        // on every recomputeSync(), which fires after every library mutation.
+        let badges = model.slots.syncBadges
+        let corrupt = model.libraryModel.corruptEntries
+        return List {
             ForEach(model.libraryModel.filtered(tag: tag)) { entry in
                 LibraryRowView(entry: entry, renamingEntry: $renamingEntry,
                                requestDelete: { deleteCandidate = $0 },
+                               syncHint: LibraryRowView.syncHint(for: entry,
+                                                                 badges: badges),
+                               corruptDetail: corrupt[entry.id],
                                selecting: selecting,
                                isSelected: selectedIDs.contains(entry.id),
                                onToggleSelect: { toggleSelect(entry.id) })
@@ -216,9 +224,10 @@ struct LibraryListView: View {
                 } label: {
                     Label("Sort", systemImage: "arrow.up.arrow.down")
                 }
-                if !model.libraryModel.tags.isEmpty {
+                let allTags = model.libraryModel.allTagNames
+                if !allTags.isEmpty {
                     Menu {
-                        ForEach(model.libraryModel.tags, id: \.self) { tag in
+                        ForEach(allTags, id: \.self) { tag in
                             Button {
                                 toggleTagFacet(tag)
                             } label: {
@@ -234,6 +243,9 @@ struct LibraryListView: View {
                 Button {
                     selecting = true
                 } label: { Label("Select", systemImage: "checkmark.circle") }
+                // Audition is a function of what you are looking at (§30):
+                // this button queues exactly the rows below it.
+                AuditionButton { model.auditionRequestForLibrary(tag: tag) }
                 Menu {
                     Button("Import File…") { showImporter = true }
                     Button("Import Device…") { showImportDevice = true }
@@ -264,7 +276,7 @@ struct LibraryListView: View {
     private func bulkSetFavorite(_ favorite: Bool) {
         let ids = Array(selectedIDs)
         Task {
-            for id in ids { await model.libraryModel.setFavorite(id: id, favorite) }
+            await model.libraryModel.setFavorite(ids: ids, favorite)
             model.toasts.show((favorite ? "Favorited " : "Unfavorited ")
                 + "\(ids.count) presets.")
         }
@@ -337,6 +349,11 @@ struct LibraryRowView: View {
     let entry: LibraryEntry
     @Binding var renamingEntry: String?
     let requestDelete: (LibraryEntry) -> Void
+    /// Resolved once per list body by the owning screen — a row that
+    /// subscribed to `slots.syncBadges` / `libraryModel.corruptEntries`
+    /// itself was invalidated by every unrelated library mutation.
+    var syncHint: String? = nil
+    var corruptDetail: String? = nil
     /// Edit-mode multi-select (UX addendum §22.4); off by default so
     /// FavoritesListView and others get the plain row.
     var selecting = false
@@ -379,9 +396,9 @@ struct LibraryRowView: View {
             FavoriteToggle(isFavorite: entry.favorite) {
                 Task { await model.libraryModel.toggleFavorite(id: entry.id) }
             }
-            if let detail = model.libraryModel.corruptEntries[entry.id] {
+            if let corruptDetail {
                 SlotFlagBadge(flag: .verifyFailed)
-                    .help(detail)
+                    .help(corruptDetail)
             }
             if let slot = entry.slot {
                 Text("→ \(SlotID(slot).display)")
@@ -414,9 +431,10 @@ struct LibraryRowView: View {
                       defaultFilename: entry.name) { _ in }
     }
 
-    private var syncHint: String? {
-        guard let slot = entry.slot,
-              let status = model.slots.syncBadges[slot] else { return nil }
+    /// Pure lookup, so the owning list can resolve it once for every row.
+    static func syncHint(for entry: LibraryEntry,
+                         badges: [Int: SlotStatus]) -> String? {
+        guard let slot = entry.slot, let status = badges[slot] else { return nil }
         switch status {
         case .inSync: return "in sync"
         case .differs: return "differs"

@@ -34,15 +34,51 @@ final class LibraryModel {
     /// Entry id → integrity detail (corruption badge on the row, UX §6).
     private(set) var corruptEntries: [String: String] = [:]
 
-    var searchText = ""
-    var sort: Sort = .name
+    var searchText = "" { didSet { recomputeDerived() } }
+    var sort: Sort = .name { didSet { recomputeDerived() } }
     /// Faceted-filter state (UX addendum §21.3). All compose with AND; the
     /// browser and its chip grid read the same derived helpers below.
-    var categoryFilter: FreakCore.Category?          // nil = all categories
-    var tagFilter: Set<String> = []        // AND across selected tags
-    var favoritesOnly = false              // set by the Favorites selection (§24)
+    var categoryFilter: FreakCore.Category? {        // nil = all categories
+        didSet { recomputeDerived() }
+    }
+    var tagFilter: Set<String> = [] {      // AND across selected tags
+        didSet { recomputeDerived() }
+    }
+    /// Set by the Favorites selection (§24). Guarded: a `didSet` fires on
+    /// every assignment, equal values included, and RootView reassigns this on
+    /// EVERY sidebar change — a full 966-entry pass plus a name sort on the
+    /// navigation's critical path, for nothing.
+    var favoritesOnly = false {
+        didSet {
+            guard oldValue != favoritesOnly else { return }
+            recomputeDerived()
+        }
+    }
+    /// Audition verdict facet: nil = all; `.unrated` = "not yet judged".
+    var verdictFilter: Verdict? { didSet { recomputeDerived() } }
     /// Fires after any library mutation so dependents (sync diff) recompute.
     var onChange: (@MainActor () -> Void)?
+
+    // ------------------------------------------------- precomputed derived
+    //
+    // These used to be computed properties read straight from view bodies, so
+    // a 966-entry filter + a sort whose comparator called String.lowercased()
+    // ~19k times ran several times per navigation and once per keystroke.
+    // They are now stored: recomputed once per input change, in ONE pass.
+
+    /// The browser's rows for the current facets, sorted. Was `filtered(nil)`.
+    private(set) var displayRows: [LibraryEntry] = []
+    /// Faceted per-category counts for the chip grid. Was `categoryCounts`.
+    private(set) var displayCategoryCounts: [FreakCore.Category: Int] = [:]
+    /// Every tag in the library. Was `tags`.
+    private(set) var allTagNames: [String] = []
+    /// Is anything favorited at all (the Favorites empty-state test)?
+    private(set) var hasAnyFavorite = false
+
+    // Caches parallel to `entries`. @ObservationIgnored is load-bearing:
+    // writing them from recomputeDerived() must not retrigger observation.
+    @ObservationIgnored private var sortKeys: [String] = []
+    @ObservationIgnored private var indexByID: [String: Int] = [:]
 
     /// First-run seeding of the bundled starter library (README in
     /// App/Resources/SeedBanks). Off for previews/tests (ephemeral sandboxes).
@@ -98,35 +134,104 @@ final class LibraryModel {
     func refresh() async {
         guard let library else { return }
         entries = await library.entries()
+        rebuildEntryCaches()
+        recomputeDerived()
         onChange?()
+    }
+
+    /// Rebuild the caches that depend on `entries` alone — the tag list
+    /// included. It used to be recomputed inside `recomputeDerived()`, which
+    /// meant every search keystroke rescanned and re-sorted all 966 entries'
+    /// tags and invalidated the sidebar's tag rows with an identical value.
+    private func rebuildEntryCaches() {
+        sortKeys = entries.map { $0.name.lowercased() }
+        indexByID = Dictionary(uniqueKeysWithValues:
+            entries.enumerated().map { ($0.element.id, $0.offset) })
+        let tags = Attributes.allTags(entries)
+        if allTagNames != tags { allTagNames = tags }
+    }
+
+    /// One pass over `entries` producing every derived output the views read.
+    /// Loop-invariants (the trimmed/lowercased query, whether a tag filter is
+    /// active) are hoisted; the name sort compares precomputed keys instead of
+    /// lowercasing both operands on every comparison.
+    private func recomputeDerived() {
+        // Tolerate a facet didSet firing before refresh() has run.
+        if sortKeys.count != entries.count { rebuildEntryCaches() }
+
+        let query = searchText.trimmingCharacters(in: .whitespaces).lowercased()
+        let hasTagFilter = !tagFilter.isEmpty
+        var counts = [FreakCore.Category: Int]()
+        for category in FreakCore.Category.displayOrder { counts[category] = 0 }
+        var rows: [Int] = []
+        rows.reserveCapacity(entries.count)
+        var anyFavorite = false
+
+        for index in entries.indices {
+            let entry = entries[index]
+            if entry.favorite { anyFavorite = true }
+            // The category-ignoring survivors are the census population; the
+            // rows are those of them that also pass the category filter, so
+            // the chip counts and the list can never disagree.
+            guard passesNonCategoryFacets(entry, key: sortKeys[index],
+                                          query: query,
+                                          hasTagFilter: hasTagFilter)
+            else { continue }
+            counts[entry.category, default: 0] += 1
+            if let categoryFilter, entry.category != categoryFilter { continue }
+            rows.append(index)
+        }
+
+        switch sort {
+        case .name:
+            rows.sort {
+                (sortKeys[$0], entries[$0].addedAt)
+                    < (sortKeys[$1], entries[$1].addedAt)
+            }
+        case .dateAdded:
+            rows.sort { entries[$0].addedAt > entries[$1].addedAt }
+        case .slot:
+            rows.sort {
+                (entries[$0].slot ?? Int.max, entries[$0].name)
+                    < (entries[$1].slot ?? Int.max, entries[$1].name)
+            }
+        }
+
+        // Observation has no equality check of its own: an identical-value
+        // reassignment still invalidates every observer, so guard the ones
+        // that usually do not move (the chip counts, the Favorites test).
+        displayRows = rows.map { entries[$0] }
+        if displayCategoryCounts != counts { displayCategoryCounts = counts }
+        if hasAnyFavorite != anyFavorite { hasAnyFavorite = anyFavorite }
+    }
+
+    /// Every facet except the category one (the census needs that split).
+    private func passesNonCategoryFacets(_ entry: LibraryEntry, key: String,
+                                         query: String,
+                                         hasTagFilter: Bool) -> Bool {
+        if favoritesOnly, !entry.favorite { return false }
+        if let verdictFilter, entry.verdict != verdictFilter { return false }
+        if hasTagFilter, !tagFilter.isSubset(of: Set(entry.tags)) { return false }
+        if !query.isEmpty {
+            let hit = key.contains(query)
+                || entry.tags.contains { $0.lowercased().contains(query) }
+            if !hit { return false }
+        }
+        return true
     }
 
     // -------------------------------------------------------------- reads
 
-    var tags: [String] {
-        Attributes.allTags(entries)
-    }
-
     func entry(id: String) -> LibraryEntry? {
-        entries.first { $0.id == id }
-    }
-
-    /// Favorited entries in the current sort (UX addendum §24.3).
-    var favorites: [LibraryEntry] {
-        sortedForDisplay(entries.filter(\.favorite))
+        guard let index = indexByID[id], entries.indices.contains(index)
+        else { return nil }
+        return entries[index]
     }
 
     /// Does a favorited entry hold these exact bytes? Drives the device-row
     /// and device-detail heart (UX addendum §24.2).
     func favoritedSha(_ sha256: String) -> Bool {
         entries.contains { $0.sha256 == sha256 && $0.favorite }
-    }
-
-    /// Per-category counts, faceted over every active facet EXCEPT the
-    /// category filter itself (standard faceted search, UX addendum §22.2).
-    /// Every FreakCore.Category key is present (0 when none) so the chip row is stable.
-    var categoryCounts: [FreakCore.Category: Int] {
-        Attributes.categoryCensus(entries.filter { matches($0, ignoreCategory: true) })
     }
 
     func entryClaiming(slot: SlotID) -> LibraryEntry? {
@@ -139,45 +244,14 @@ final class LibraryModel {
 
     /// The browser's rows: every active facet (category ∧ tagFilter ∧
     /// favorite ∧ search) plus the sidebar's legacy single-tag selection,
-    /// composed with AND (UX addendum §21.3), then sorted.
+    /// composed with AND (UX addendum §21.3), in sort order.
+    ///
+    /// `tag == nil` (the common path) is now a stored-property read. The
+    /// single-tag branch post-filters the already-sorted rows — filtering a
+    /// sorted array preserves its order, so no re-sort is needed.
     func filtered(tag: String?) -> [LibraryEntry] {
-        sortedForDisplay(entries.filter { entry in
-            matches(entry) && (tag == nil || entry.tags.contains(tag!))
-        })
-    }
-
-    /// One matcher, so the chip counts and the list can never disagree.
-    /// `ignoreCategory` powers the faceted category census (§22.2).
-    private func matches(_ entry: LibraryEntry,
-                         ignoreCategory: Bool = false) -> Bool {
-        if !ignoreCategory, let categoryFilter, entry.category != categoryFilter {
-            return false
-        }
-        if favoritesOnly, !entry.favorite { return false }
-        if let verdictFilter, entry.verdict != verdictFilter { return false }
-        if !tagFilter.isSubset(of: Set(entry.tags)) { return false }
-        let query = searchText.trimmingCharacters(in: .whitespaces).lowercased()
-        if !query.isEmpty {
-            let hit = entry.name.lowercased().contains(query)
-                || entry.tags.contains { $0.lowercased().contains(query) }
-            if !hit { return false }
-        }
-        return true
-    }
-
-    private func sortedForDisplay(_ list: [LibraryEntry]) -> [LibraryEntry] {
-        switch sort {
-        case .name:
-            return list.sorted {
-                ($0.name.lowercased(), $0.addedAt) < ($1.name.lowercased(), $1.addedAt)
-            }
-        case .dateAdded:
-            return list.sorted { $0.addedAt > $1.addedAt }
-        case .slot:
-            return list.sorted {
-                ($0.slot ?? Int.max, $0.name) < ($1.slot ?? Int.max, $1.name)
-            }
-        }
+        guard let tag else { return displayRows }
+        return displayRows.filter { $0.tags.contains(tag) }
     }
 
     /// Facts for the delete guard (UX §6): does the blob file survive?
@@ -193,7 +267,10 @@ final class LibraryModel {
         }
         do {
             let preset = try await library.get(id: id)
-            corruptEntries[id] = nil
+            // Guarded: writing nil for an absent key still mutates the observed
+            // dictionary, which would invalidate every realized library row on
+            // every successful read (once per audition step, per export).
+            if corruptEntries[id] != nil { corruptEntries[id] = nil }
             return preset
         } catch let error as FreakError {
             if case .integrity(_, let detail) = error {
@@ -226,7 +303,7 @@ final class LibraryModel {
     func delete(id: String) async throws {
         guard let library else { return }
         try await library.remove(id: id)
-        corruptEntries[id] = nil
+        if corruptEntries[id] != nil { corruptEntries[id] = nil }
         await refresh()
     }
 
@@ -288,9 +365,6 @@ final class LibraryModel {
         await refresh()
     }
 
-    /// Audition verdict facet: nil = all; `.unrated` = "not yet judged".
-    var verdictFilter: Verdict?
-
     func setVerdict(id: String, _ verdict: Verdict) async {
         guard let library else { return }
         _ = try? await library.setVerdict(id: id, to: verdict)
@@ -306,6 +380,31 @@ final class LibraryModel {
     func setFavorite(id: String, _ favorite: Bool) async {
         guard let library else { return }
         _ = try? await library.setFavorite(id: id, to: favorite)
+        await refresh()
+    }
+
+    /// Bulk favorite over a selection — one index rewrite per entry, then a
+    /// SINGLE refresh. Looping the per-id mutator instead meant one full
+    /// entries copy + every derived recompute + a sync recompute per entry.
+    func setFavorite(ids: [String], _ favorite: Bool) async {
+        guard let library else { return }
+        for id in ids {
+            _ = try? await library.setFavorite(id: id, to: favorite)
+        }
+        await refresh()
+    }
+
+    /// Bulk tag-add over a selection (case-insensitive de-dupe per entry),
+    /// then a single refresh.
+    func addTag(ids: [String], _ tag: String) async {
+        let trimmed = tag.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty, let library else { return }
+        for id in ids {
+            guard let existing = entry(id: id) else { continue }
+            guard !existing.tags.contains(where: {
+                $0.lowercased() == trimmed.lowercased() }) else { continue }
+            _ = try? await library.setTags(id: id, to: existing.tags + [trimmed])
+        }
         await refresh()
     }
 

@@ -1,15 +1,24 @@
 // RootView.swift — the three-column shell and all global wiring (UX §3, §18.1).
 //
 // NavigationSplitView (sidebar / content / detail), the practice banner over
-// the content column, the global status bar as a bottom safeAreaInset, every
-// sheet and alert, toasts, and passive banners (hot-plug, backup
-// interrupted). Navigation selection persists via SceneStorage — selection
-// only, never a resumed device operation.
+// the content column, every sheet and alert, toasts, and passive banners
+// (hot-plug, backup interrupted, a minimized audition). Navigation selection
+// persists via SceneStorage — selection only, never a resumed device
+// operation.
+//
+// There is NO global bottom bar any more: a safeAreaInset on the split view
+// does not propagate into the columns' safe areas, so it painted over
+// CollectionDetailView's Apply bar and SlotListView's multi-select bar.
+// Connection state moved to the sidebar's Device section; the running
+// operation is a transient toolbar item on the content column. Toasts are an
+// overlay on the CONTENT COLUMN for the same reason — on the split view they
+// re-created the same occlusion over the detail column's Apply bar.
 
 import SwiftUI
 
 struct RootView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.horizontalSizeClass) private var sizeClass
     @SceneStorage("sidebarSelection") private var storedSidebar = "device"
 
     var body: some View {
@@ -18,6 +27,7 @@ struct RootView: View {
             SidebarView()
         } content: {
             contentColumn
+                .deviceActivityToolbar()
                 .safeAreaInset(edge: .top, spacing: 0) {
                     VStack(spacing: 0) {
                         if model.connection.isPractice {
@@ -26,15 +36,34 @@ struct RootView: View {
                         passiveBanners
                     }
                 }
+                // Toasts belong to a COLUMN, not to the split view: as an
+                // overlay on the split view they painted over (and swallowed
+                // taps on) the detail column's own bottom bars — exactly the
+                // occlusion that killed CollectionDetailView's Apply button.
+                .overlay(alignment: .bottom) {
+                    ToastOverlay()
+                        .padding(.bottom, 16)
+                }
         } detail: {
             detailColumn
+                // In a collapsed (compact) layout the content column's top
+                // inset is off-screen while a detail screen is pushed, so the
+                // loan promise would be invisible on the very screen the
+                // audition was started from. It rides the detail column too,
+                // there and only there.
+                .safeAreaInset(edge: .top, spacing: 0) {
+                    if sizeClass == .compact && showLoanBanner {
+                        AuditionLoanBanner()
+                    }
+                }
         }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            StatusBarView()
-        }
-        .overlay(alignment: .bottom) {
-            ToastOverlay()
-                .padding(.bottom, 64)
+        // The running audition owns the whole screen — above the split view,
+        // so no column bar can clip it, and no navigation can lose it.
+        .fullScreenCover(isPresented: Binding(
+            get: { model.audition.presented },
+            set: { model.audition.presented = $0 })) {
+            AuditionSessionView()
+                .interactiveDismissDisabled()
         }
         // ------------------------------------------------------- sheets
         .sheet(isPresented: $model.showBackupProgressSheet) {
@@ -74,10 +103,27 @@ struct RootView: View {
         }
         // ------------------------------------------------------- lifecycle
         .task { await model.startHotPlugScan() }
-        .onAppear { model.sidebar = Self.sidebar(from: storedSidebar) }
+        .onAppear {
+            let selection = Self.sidebar(from: storedSidebar)
+            model.sidebar = selection
+            setFavoritesOnly(selection == .favorites)
+        }
         .onChange(of: model.sidebar) { _, selection in
             storedSidebar = Self.store(selection)
+            // Owned here, not by FavoritesListView.onAppear: a body pass runs
+            // BEFORE onAppear, so the old wiring built a full 966-row list and
+            // threw it away on every entry into Favorites — and could leave the
+            // shared flag stuck true for All Presets.
+            setFavoritesOnly(selection == .favorites)
         }
+    }
+
+    /// Assign only on a real change. `favoritesOnly`'s didSet fires on every
+    /// assignment, equal values included, and each one costs a full pass over
+    /// the library plus a name sort on the navigation's critical path.
+    private func setFavoritesOnly(_ value: Bool) {
+        guard model.libraryModel.favoritesOnly != value else { return }
+        model.libraryModel.favoritesOnly = value
     }
 
     // ------------------------------------------------------------- columns
@@ -95,9 +141,7 @@ struct RootView: View {
             LibraryListView(tag: tag)
         case .favorites:
             FavoritesListView()
-        case .audition:
-            AuditionView()
-        case .collections, .collection:
+        case .collections:
             CollectionsListView()
         case .sync:
             SyncListView()
@@ -127,8 +171,27 @@ struct RootView: View {
 
     // ------------------------------------------------------ passive banners
 
+    /// The standing promise that a slot is out on loan. Gated on the session
+    /// cover being ACTUALLY on screen, not on the `presented` flag: if the
+    /// cover fails to present (it is asked for while the setup popover is
+    /// being dismissed), `presented` stays true and the flag-gated banner
+    /// vanished — leaving a borrowed slot with no Stop control anywhere.
+    private var showLoanBanner: Bool {
+        model.audition.needsRestore && !model.audition.coverVisible
+    }
+
     @ViewBuilder
     private var passiveBanners: some View {
+        // No dismiss — it goes away when the slot is back, and nothing else
+        // does.
+        if showLoanBanner {
+            AuditionLoanBanner()
+        }
+        // A loan left over from a previous run (terminated mid-session) or one
+        // the user chose to settle later. The saved original is on disk.
+        if let loan = model.pendingAuditionLoan, !model.audition.needsRestore {
+            AuditionLoanRecoveryBanner(loan: loan)
+        }
         if let banner = model.hotPlugBanner {
             PassiveBannerView(text: banner,
                               actionLabel: model.connection.isPractice
@@ -217,7 +280,9 @@ struct RootView: View {
         case "collections": return .collections
         case "sync": return .sync
         case "backups": return .backups
-        case "audition": return .audition
+        // Audition is no longer a place; a stored value from an older build
+        // lands on the library rather than an empty column.
+        case "audition": return .library(tag: nil)
         default: return .device
         }
     }
@@ -226,9 +291,7 @@ struct RootView: View {
         switch selection {
         case .library: return "library"
         case .favorites: return "favorites"
-        case .audition: return "audition"
-        // A specific collection restores to the section (never a resumed op).
-        case .collections, .collection: return "collections"
+        case .collections: return "collections"
         case .sync: return "sync"
         case .backups: return "backups"
         default: return "device"
@@ -267,7 +330,70 @@ struct PassiveBannerView: View {
     }
 }
 
-/// Transient toasts, bottom-anchored above the status bar (UX §8.2, §9.6).
+/// A minimized audition is still holding one of the user's slots. This banner
+/// is the standing promise and the only way back; it has no dismiss control
+/// because dismissing it would hide an outstanding loan.
+struct AuditionLoanBanner: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "play.circle")
+            Text(text).font(.callout).lineLimit(2)
+            Spacer()
+            Button("Resume") { model.audition.presented = true }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+            Button("Stop & Restore") { model.audition.stop() }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(.thinMaterial)
+    }
+
+    private var text: String {
+        let slot = SlotID(model.audition.borrowedSlot
+                          ?? model.audition.slot).display
+        let source = model.audition.sourceLabel
+        return source.isEmpty
+            ? "Auditioning — slot \(slot) borrowed."
+            : "Auditioning \(source) — slot \(slot) borrowed."
+    }
+}
+
+/// A loan that outlived its session: the app was terminated mid-audition, or
+/// the user chose to settle it later. The saved original is on disk, so this
+/// banner — not a lost in-memory actor — is the promise.
+struct AuditionLoanRecoveryBanner: View {
+    @Environment(AppModel.self) private var model
+    let loan: AuditionLoan
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.yellow)
+            Text("Slot \(SlotID(loan.slot).display) still holds an audition "
+                 + "preset. Its original '\(loan.name)' is saved.")
+                .font(.callout)
+                .lineLimit(2)
+            Spacer()
+            Button("Put It Back") { model.restorePendingAuditionLoan() }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .disabled(!model.connection.hasDevice)
+            Button("Forget") { model.discardPendingAuditionLoan() }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(.thinMaterial)
+    }
+}
+
+/// Transient toasts, bottom-anchored (UX §8.2, §9.6).
 struct ToastOverlay: View {
     @Environment(AppModel.self) private var model
 
@@ -296,6 +422,10 @@ struct ToastOverlay: View {
                 .background(.regularMaterial,
                             in: RoundedRectangle(cornerRadius: 12))
                 .shadow(radius: 4)
+                // A toast with no action is a notice, not a control: it must
+                // never eat a tap meant for the list underneath it. Only the
+                // Undo toast (which has a button to hit) is hit-testable.
+                .allowsHitTesting(toast.actionLabel != nil)
             }
         }
         .padding(.horizontal, 24)

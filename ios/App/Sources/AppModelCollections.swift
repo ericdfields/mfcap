@@ -146,6 +146,12 @@ extension AppModel {
             toasts.show("Connect a device to switch.", isError: true)
             return
         }
+        // A Switch would write the borrowed slot, and stop()'s restore would
+        // then silently revert it (UX addendum §30.4).
+        if let reason = auditionBlockReason() {
+            toasts.show(reason, isError: true)
+            return
+        }
         if !crossIdentityConfirmed, isCrossIdentity(coll) {
             deviceAlert = DeviceAlert(
                 title: "Cross-identity switch",

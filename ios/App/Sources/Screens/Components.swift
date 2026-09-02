@@ -170,7 +170,7 @@ struct CategoryFilterBar: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        let counts = model.libraryModel.categoryCounts
+        let counts = model.libraryModel.displayCategoryCounts
         let total = counts.values.reduce(0, +)
         let selected = model.libraryModel.categoryFilter
         ScrollView(.horizontal, showsIndicators: false) {
@@ -474,6 +474,9 @@ struct ProvenanceLabel: View {
 /// a Practice chip when the provenance identity is practice.
 struct CollectionRowView: View {
     let collection: PresetCollection
+    /// True when the detail column is showing this collection — the "which
+    /// one is open" cue the sidebar's duplicate rows used to carry.
+    var isOpen = false
 
     var body: some View {
         HStack(spacing: 10) {
@@ -495,9 +498,15 @@ struct CollectionRowView: View {
                     .background(Color.purple.opacity(0.15), in: Capsule())
                     .foregroundStyle(.purple)
             }
+            if isOpen {
+                Image(systemName: "checkmark")
+                    .font(.caption).foregroundStyle(.tint)
+                    .accessibilityLabel("open")
+            }
         }
         .frame(minHeight: 52)
         .contentShape(Rectangle())
+        .accessibilityAddTraits(isOpen ? .isSelected : [])
     }
 }
 

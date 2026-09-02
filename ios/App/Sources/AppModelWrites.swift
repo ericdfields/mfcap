@@ -76,6 +76,12 @@ extension AppModel {
     /// and get a dialog from RootView instead.
     func requestSend(_ transfer: PresetTransfer, to slot: SlotID,
                      anchor: SlotID? = nil) {
+        // Say it before the confirmation, not after it: a write to the
+        // borrowed slot would be silently reverted by the audition's restore.
+        if let reason = auditionBlockReason(for: slot) {
+            toasts.show(reason, isError: true)
+            return
+        }
         let item = makePlanItem(target: slot,
                                 incomingName: transfer.displayName,
                                 incoming: incoming(for: transfer))
@@ -104,6 +110,11 @@ extension AppModel {
             items.append(makePlanItem(target: target,
                                       incomingName: transfer.displayName,
                                       incoming: incoming(for: transfer)))
+        }
+        if let reason = items.lazy
+            .compactMap({ self.auditionBlockReason(for: $0.target) }).first {
+            toasts.show(reason, isError: true)
+            return
         }
         let plan = OverwritePlan(
             kind: .send, items: items,
@@ -207,6 +218,15 @@ extension AppModel {
 
     func execute(_ plan: OverwritePlan) {
         pendingConfirmation = nil
+        // The choke point every single and batch write shares (send, paste,
+        // undo/redo, bulk sync): the audition's own restore would revert a
+        // write to the borrowed slot and leave the undo stack describing a
+        // state that no longer exists (UX addendum §30.4).
+        if let reason = plan.items.lazy
+            .compactMap({ self.auditionBlockReason(for: $0.target) }).first {
+            toasts.show(reason, isError: true)
+            return
+        }
         if plan.items.count == 1, let item = plan.items.first {
             executeSingle(item, plan: plan)
         } else {
@@ -516,6 +536,12 @@ extension AppModel {
     /// success) and the slot is NOT flagged torn.
     func renameSlot(_ slot: SlotID, to name: String) {
         guard let device else { return }
+        // Renaming the borrowed slot renames the audition preset sitting in
+        // it, and stop() then writes the original back over the whole thing.
+        if let reason = auditionBlockReason(for: slot) {
+            toasts.show(reason, isError: true)
+            return
+        }
         guard NameRules.isValid(name) else {
             toasts.show(NameRules.ruleCopy, isError: true)
             return

@@ -59,8 +59,15 @@ struct BackupListView: View {
                 } label: {
                     Label("Back Up Now", systemImage: "externaldrive.badge.plus")
                 }
+                // Same disabled set and same reason string as the Device
+                // screen's Back Up Now (UX addendum §30.3) — the two must not
+                // disagree about whether the button is even available.
                 .disabled(!model.connection.hasDevice
-                          || model.operations.exclusiveLongOp != nil)
+                          || model.operations.exclusiveLongOp != nil
+                          || model.auditionBlockReason() != nil)
+                .help(model.auditionBlockReason()
+                      ?? "Reads all 512 slots, about 3½ minutes. "
+                      + "The device is never modified by a backup.")
             }
         }
         .alert(item: $deleteCandidate) { summary in
@@ -134,8 +141,12 @@ struct BackupRowView: View {
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
+                // A resumed pass reads the borrowed slot too.
                 .disabled(!model.connection.hasDevice
-                          || model.operations.exclusiveLongOp != nil)
+                          || model.operations.exclusiveLongOp != nil
+                          || model.auditionBlockReason() != nil)
+                .help(model.auditionBlockReason() ?? "Finish this backup — "
+                      + "intact slots are skipped.")
             }
         }
         .frame(minHeight: 52)

@@ -1,113 +1,110 @@
-// StatusBarView.swift — the global bottom status bar (UX §3).
+// StatusBarView.swift — device ACTIVITY, formerly the global bottom bar.
 //
-// Left: connection capsule; center-left in practice: the practice capsule;
-// right: the active device operation with mini progress + Cancel/Pause, or
-// "Idle". Tapping opens the Operations popover — the ONLY home of device
-// busyness (one spinner vocabulary, UX §1.3).
+// The full-width frosted strip that used to sit at the bottom of the split
+// view is gone: it was a safeAreaInset on the NavigationSplitView itself, so
+// the columns laid out beneath it and it painted over their own bottom bars
+// (CollectionDetailView's Apply bar, SlotListView's multi-select bar).
+//
+// What it carried is re-homed, not lost:
+//   - connection state  → SidebarView's Device section (DeviceStatusRow)
+//   - the running op    → `ActiveOperationView`, a TRANSIENT toolbar item in
+//                         the content column's nav bar (nothing to occlude;
+//                         "Idle" is expressed by absence)
+//   - the ops history   → `OperationsPopover`, reachable from that item while
+//                         busy and from the sidebar's device menu while idle
+//
+// Cancel/Pause for a running long op lives in both survivors, unchanged: the
+// popover is still the only way to stop a 32-slot verified write mid-flight.
 
 import SwiftUI
 import FreakCore
 
-struct StatusBarView: View {
+// ==================================================== the toolbar attachment
+
+/// Adds the transient device-activity item to whichever content-column screen
+/// is showing. Applied once, in RootView; merges with each screen's own
+/// `.toolbar`.
+struct DeviceActivityToolbarModifier: ViewModifier {
     @Environment(AppModel.self) private var model
     @State private var showOperations = false
 
-    var body: some View {
-        HStack(spacing: 12) {
-            ConnectionCapsule()
-            Spacer()
-            ActiveOperationView()
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .background(.bar)
-        .contentShape(Rectangle())
-        .onTapGesture { showOperations = true }
-        .popover(isPresented: $showOperations,
-                 attachmentAnchor: .rect(.bounds)) {
-            OperationsPopover()
+    private var busy: Bool {
+        model.operations.current != nil || !model.operations.queued.isEmpty
+    }
+
+    func body(content: Content) -> some View {
+        content.toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                if busy {
+                    // NOT a Button wrapping the whole view: Cancel/Pause lives
+                    // inside ActiveOperationView, and a control nested in
+                    // another Button's label never gets the tap — the outer
+                    // button swallowed it and opened this popover instead, so
+                    // "Cancel" did not cancel.
+                    ActiveOperationView(openDetails: { showOperations = true })
+                        .popover(isPresented: $showOperations) {
+                            OperationsPopover()
+                        }
+                }
+            }
         }
     }
 }
 
-// ==================================================================== capsule
-
-struct ConnectionCapsule: View {
-    @Environment(AppModel.self) private var model
-
-    var body: some View {
-        Button {
-            if !model.connection.hasDevice {
-                model.showConnectSheet = true
-            }
-        } label: {
-            HStack(spacing: 6) {
-                Circle()
-                    .fill(color)
-                    .frame(width: 8, height: 8)
-                Text(text)
-                    .font(.caption.weight(.medium))
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .background(color.opacity(0.12), in: Capsule())
-            .foregroundStyle(color)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Connection: \(text)")
-    }
-
-    private var text: String {
-        switch model.connection {
-        case .noDevice: return "No Device"
-        case .connecting: return "Connecting…"
-        case .hardware: return "MicroFreak · Connected"
-        case .practice(let profile): return "Practice · \(profile.title)"
-        }
-    }
-
-    private var color: Color {
-        switch model.connection {
-        case .noDevice: return .secondary
-        case .connecting: return .orange
-        case .hardware: return .green
-        case .practice: return .purple   // the reserved practice tint (§11)
-        }
+extension View {
+    /// The replacement for the old global status bar's right-hand side.
+    func deviceActivityToolbar() -> some View {
+        modifier(DeviceActivityToolbarModifier())
     }
 }
 
 // ============================================================= active op view
 
+/// The running operation: label, sub-label, determinate progress, ETA,
+/// Cancel/Pause for long ops, and the queued-behind count. Renders nothing
+/// when the device is idle.
+///
+/// `openDetails` makes only the SUMMARY tappable. Cancel/Pause is a sibling of
+/// that button, never nested inside it, so the labelled control does what it
+/// says.
 struct ActiveOperationView: View {
     @Environment(AppModel.self) private var model
+    var openDetails: (() -> Void)?
 
     var body: some View {
         HStack(spacing: 10) {
             if let op = model.operations.current {
-                VStack(alignment: .trailing, spacing: 2) {
-                    HStack(spacing: 6) {
-                        Text(op.label)
-                            .font(.caption.weight(.medium))
-                            .lineLimit(1)
-                        if let sub = op.subLabel {
-                            Text(sub)
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    if let progress = op.progress {
+                Button {
+                    openDetails?()
+                } label: {
+                    VStack(alignment: .trailing, spacing: 2) {
                         HStack(spacing: 6) {
-                            ProgressView(value: Double(progress.done),
-                                         total: Double(max(progress.total, 1)))
-                                .frame(width: 120)
-                            if let eta = progress.etaSeconds {
-                                Text(Format.clock(eta))
-                                    .font(.caption2.monospacedDigit())
+                            Text(op.label)
+                                .font(.caption.weight(.medium))
+                                .lineLimit(1)
+                            if let sub = op.subLabel {
+                                Text(sub)
+                                    .font(.caption2)
                                     .foregroundStyle(.secondary)
+                            }
+                        }
+                        if let progress = op.progress {
+                            HStack(spacing: 6) {
+                                ProgressView(value: Double(progress.done),
+                                             total: Double(max(progress.total, 1)))
+                                    .frame(width: 120)
+                                if let eta = progress.etaSeconds {
+                                    Text(Format.clock(eta))
+                                        .font(.caption2.monospacedDigit())
+                                        .foregroundStyle(.secondary)
+                                }
                             }
                         }
                     }
                 }
+                .buttonStyle(.plain)
+                .disabled(openDetails == nil)
+                .accessibilityLabel("Device activity")
                 if op.kind == .long {
                     Button(op.label.hasPrefix("Backing") ? "Pause" : "Cancel") {
                         op.cancel()
@@ -122,9 +119,10 @@ struct ActiveOperationView: View {
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
-            } else {
-                Text("Idle")
-                    .font(.caption)
+            } else if !model.operations.queued.isEmpty {
+                ProgressView().controlSize(.small)
+                Text("\(model.operations.queued.count) queued")
+                    .font(.caption2)
                     .foregroundStyle(.secondary)
             }
         }
@@ -240,11 +238,8 @@ struct OperationsPopover: View {
     }
 }
 
-#Preview("Status bar") {
+#Preview("Operations popover") {
     PreviewHost { _ in
-        VStack {
-            Spacer()
-            StatusBarView()
-        }
+        OperationsPopover()
     }
 }

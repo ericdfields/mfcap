@@ -48,23 +48,25 @@ Three-column `NavigationSplitView`, landscape-first. Works in full screen, Split
 Sidebar                     Content column                 Detail column
 ─────────────────────────   ───────────────────────────    ─────────────────────────
 DEVICE                      SlotListView                   SlotDetailView
-  All Slots                   (512 rows, bank sections)
-  Bank 1 · 1–128            LibraryListView                LibraryEntryDetailView
-  Bank 2 · 129–256          SyncListView                   SyncSlotDetailView
-  Bank 3 · 257–384          BackupListView                 BackupDetailView
-  Bank 4 · 385–512          ConnectView (when no device
-LIBRARY                       and Device is selected)
-  All Presets
-  <tag> …
-SYNC
-BACKUPS
+  ● <connection state> ⋯      (512 rows, bank sections)
+  All Slots                 LibraryListView                LibraryEntryDetailView
+LIBRARY                     FavoritesListView              CollectionDetailView
+  All Presets               CollectionsListView            SyncSlotDetailView
+  Favorites                 SyncListView                   BackupDetailView
+  <tag> …                   BackupListView
+  Collections               ConnectView (when no device
+  Sync                        and Device is selected)
+  Backups
 ─────────────────────────
-[Connection status capsule]
+[freshness · gear]
 ```
 
-- Sidebar bank rows are **jump targets**, not filters: they scroll the always-complete slot list to that section.
+(As shipped — addendum §30.1. The bank rows, the per-collection rows, the Audition row and the
+bottom status bar are gone; connection state is the Device section's first row.)
+
+- ~~Sidebar bank rows are **jump targets**~~ — **revised (addendum §30.1):** the bank rows are gone from the sidebar; the same jump is a **Jump to Bank** toolbar menu on `SlotListView`, beside the sticky bank headers it scrolls to.
 - Library tags appear as sidebar children; selecting one filters the library list. No folders in v1 (§6).
-- **Global status bar** — a `safeAreaInset(edge: .bottom)` strip across the whole split view (`StatusBarView`). Left: connection capsule (§12). Center-left in Practice Mode: the practice capsule (§11). Right: the active device operation with mini progress bar and a Cancel/Pause control, or "Idle". Tapping opens the **Operations popover**: current op, queued ops, recent completions and failures. This is the only home of device busyness.
+- **Device activity — revised (addendum §30.1).** There is **no** global bottom bar: a `safeAreaInset(edge: .bottom)` on the split view is not propagated into the columns' safe areas, so it painted over `CollectionDetailView`'s Apply button and `SlotListView`'s multi-select bar. Connection state (§12) is now the first row of the sidebar's **Device** section (`DeviceStatusRow`), carrying the connect / practice-profile / disconnect verbs and **Device Activity…**. The active device operation — mini progress bar, ETA, Cancel/Pause, "+N queued" — is a **transient** `.topBarTrailing` toolbar item on the content column (`deviceActivityToolbar()`); "Idle" is its absence. Tapping it opens the same **Operations popover** (current, queued, per-op Cancel, "Stop batch after current slot", recent completions and failures), which is still the only home of device busyness and the only mid-flight cancel for a long op.
 - **Practice banner** (§11) sits above the content column whenever the session is simulated.
 - Sheets (modal): `BackupProgressSheet`, `RestorePlanSheet`, `BulkApplyPlanSheet`, `SendPlanSheet`, `ConnectSheet`. Alerts: single-target overwrite confirmation, error alerts per §14.
 
@@ -118,7 +120,7 @@ The home screen. All 512 slots, always — never paged, never truncated, populat
 **States**
 
 - *Initial names pass:* numbered rows render immediately with redacted name placeholders; names stream in (~2 s total — shimmer, not a wait screen).
-- *Device busy (exclusive long op):* list stays fully browsable from cache; per-row device actions disabled with the reason inline ("Backup running — 2:10 left"); progress lives in the status bar only.
+- *Device busy (exclusive long op):* list stays fully browsable from cache; per-row device actions disabled with the reason inline ("Backup running — 2:10 left"); progress lives in the device-activity toolbar item / Operations popover only (addendum §30.1).
 - *Disconnected:* list remains, desaturated; header banner "Showing last known state from 14:32 — no device." Device actions disabled; library-side actions (save-from-cache, browse) still work.
 - *Names pass failed:* inline banner with the mapped error (§14) + Retry; already-read rows stay populated.
 
@@ -278,12 +280,12 @@ Status capsule strings: "MicroFreak · Connected" / "Connecting…" / "No Device
 
 The user is standing, iPad landscape on a stand, one free hand. Binding rules for every screen:
 
-1. **Primary actions live in the lower half and near the vertical edges** — toolbars that matter (Back Up Now, Apply, Confirm) render as bottom-anchored bars in sheets, never top-center. The status bar (bottom) is the global control surface.
+1. **Primary actions live in the lower half and near the vertical edges** — toolbars that matter (Back Up Now, Apply, Confirm) render as bottom-anchored bars in sheets, never top-center. (Revised, addendum §30.1: there is no global bottom bar; a column's own bottom bar is never overlaid by app chrome.)
 2. **Confirmations anchor at the point of interaction** (popover at the touched row), so confirm-after-tap requires no reach across the screen. Full plan sheets put Confirm/Cancel bottom-trailing.
 3. **No interaction requires two simultaneous touches.** Drag-and-drop always has a tap-only path of equal capability (§8.1 parity rule). Multi-select uses Edit-mode checkboxes, not held modifiers.
 4. **Targets:** minimum 44 pt; list rows ≥ 52 pt; the browser's per-row primary tap is the whole row.
 5. **Handedness-neutral:** nothing is exclusive to a left- or right-edge gesture; swipe actions exist on both edges (leading: Save to Library; trailing: Send Here… / Rename) and every swipe action is also in the context menu.
-6. **Reachability of the 512-row list:** sidebar bank jumps + section index; flick-scroll never required to reach a bank.
+6. **Reachability of the 512-row list:** the slot list's **Jump to Bank** toolbar menu + sticky section headers; flick-scroll never required to reach a bank (addendum §30.1 — was sidebar bank rows).
 7. Destructive confirm buttons are **never** placed where the resting thumb falls during scrolling (no full-width bottom-edge destructive buttons without a preceding deliberate tap).
 8. Hardware keyboard is fully supported (arrows, type-ahead select, Return = rename, Space = detail focus, ⌘F search, ⌘R refresh names, ⌘B back up, ⌘Z undo, Esc cancel) but never required.
 
@@ -422,7 +424,9 @@ FreakLibrarianApp (App/Sources/MicroFreakLibrarianApp.swift)
       │      ├─ SyncSlotDetailView
       │      └─ BackupDetailView
       ├─ PracticeBanner                 (overlay, top of content, §11)
-      ├─ .safeAreaInset(bottom): StatusBarView → ConnectionCapsule, ActiveOperationView, OperationsPopover
+      ├─ .toolbar(content column): deviceActivityToolbar() → ActiveOperationView → OperationsPopover  (§30.1)
+      ├─ .fullScreenCover: AuditionSessionView                                              (§30.2)
+      ├─ passive banner: AuditionLoanBanner (minimized session, no dismiss)                  (§30.3)
       ├─ .sheet: BackupProgressSheet | RestorePlanSheet | BulkApplyPlanSheet | SendPlanSheet | ConnectSheet
       ├─ .alert / .popover: OverwriteConfirmation (from OverwritePlan) | VerifyMismatchSheet | error alerts
       └─ drag/drop wiring via PresetTransfer (Transferable)

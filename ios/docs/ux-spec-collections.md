@@ -358,10 +358,16 @@ the arrangement writes the intended name/category even when the blob is shared w
 
 ### 26.1 Placement & list (`CollectionsListView`, `CollectionRowView`)
 
-A new top-level sidebar section **COLLECTIONS** (§28.1) with a static **All Collections** row and one
-child per collection. Selecting the section (or All Collections) shows `CollectionsListView` in the
-content column; selecting a collection shows `CollectionDetailView` in the detail column
-(`DetailSelection.collection(id:)`).
+> **Revised — see §30.** The COLLECTIONS *section* with one sidebar child per collection is gone:
+> a single **Collections** destination row shows `CollectionsListView` in the content column, and
+> selecting a row there opens `CollectionDetailView` in the detail column. Listing every collection
+> in both the sidebar and the list beside it made the sidebar a duplicate of the screen next to it.
+
+~~A new top-level sidebar section **COLLECTIONS** (§28.1) with a static **All Collections** row and one
+child per collection.~~ One **Collections** sidebar row shows `CollectionsListView` in the content
+column; tapping a row there shows `CollectionDetailView` in the detail column
+(`DetailSelection.collection(id:)`), and that row carries the "this one is open" checkmark the
+sidebar children used to carry.
 
 `CollectionRowView` (≥ 52 pt): name · provenance line · preset count · identity chip when the
 provenance identity is `practice:*`.
@@ -544,7 +550,10 @@ finishes or is cancelled (`canSwitchDevice`, §11/§12).
 
 ## 28. App-structure deltas
 
-### 28.1 Navigation
+> **§28.1 is superseded by §30.1.** `SidebarSelection` no longer has `.collection(id:)` or
+> `.audition`; the sidebar has no bank rows and no per-collection rows.
+
+### 28.1 Navigation (superseded — see §30.1)
 
 `SidebarSelection` (base §3, in `AppModel`) gains cases; `DetailSelection` gains one:
 
@@ -643,3 +652,252 @@ select uses Edit-mode checkboxes; nothing requires two touches or a specific edg
 5. **`.mfprojz` parser port.** The Swift `MFProjzImport` must be a semantics-faithful port of the
    verified `tools/mbp_import.py` (Boost archive header, `<bloblen>=4672` blob, sub-bank slot
    mapping), with a golden fixture per the parity constraint — not a fresh implementation.
+
+---
+
+## 30. Revision — chrome, audition-as-a-feature, and the sidebar (shipped)
+
+This section records what the running app actually does after the first round of use on hardware.
+It **supersedes** the base spec's global-status-bar clauses (base §3, §7 view tree, §13.1) and this
+addendum's §26.1 and §28.1 where they disagree.
+
+### 30.1 There is no global bottom bar
+
+The old `StatusBarView` was a `safeAreaInset(edge: .bottom)` on the **`NavigationSplitView` itself**.
+An inset applied there is not propagated into the columns' safe areas on iPadOS, so each column laid
+out beneath it and the frosted strip painted **on top of** the column's own bottom bar: it covered
+`CollectionDetailView`'s primary "Apply / Switch" button and clipped its "Switching now changes 32 of
+512 slots (~32 s)" caption, and it sat over `SlotListView`'s multi-select bar. The replacement must
+never be a `safeAreaInset` on the split view, and must never be an overlay.
+
+What it carried is re-homed, not lost:
+
+| Was (bottom bar) | Is now |
+|---|---|
+| Connection capsule (dot + state, tap to connect) | `DeviceStatusRow`, the first row of the sidebar's **Device** section |
+| Practice-profile switch, Leave Practice Mode, Disconnect (were under the sidebar's gear) | the `DeviceStatusRow` menu, with the state they act on |
+| Running op: label, determinate progress, ETA, Cancel/Pause, "+N queued" | `ActiveOperationView` in a **transient** `.topBarTrailing` toolbar item on the content column (`deviceActivityToolbar()`) |
+| "Idle" | nothing — idle is the absence of the item |
+| Operations popover (running / queued / per-op Cancel / "Stop batch after current slot" / Recent ×8 with failure text) | the same `OperationsPopover`, opened from that toolbar item while busy and from **Device Activity…** in the `DeviceStatusRow` menu while idle |
+
+The popover is still the **only** way to cancel a running `.long` op (a 32-slot verified collection
+write, a full backup) once its sheet has been dismissed; that route is load-bearing, not decorative.
+It is therefore reachable from **every** connection state: the idle route is **Device Activity…** in
+the sidebar footer's settings menu (it used to live inside the *connected* device menu, so a transport
+loss took its own explanation with it — not busy any more, and not connected either).
+
+`ActiveOperationView`'s Cancel/Pause is a **sibling** of the button that opens the popover, never
+nested inside its label: a control inside a `Button` label never receives the tap, so "Cancel" opened
+the popover instead of cancelling.
+
+Toasts are an overlay on the **content column**, not on the split view, and a toast with no action is
+`allowsHitTesting(false)` — as a split-view overlay they re-created exactly the occlusion this section
+exists to remove, painting over `CollectionDetailView`'s Apply bar for 4–10 s.
+
+Sidebar as shipped — destinations only:
+
+```
+DEVICE        ● MicroFreak · Connected  ⋯      (state + connection verbs + Device Activity…)
+              All Slots
+LIBRARY       All Presets · Favorites · <tag> …
+              Collections · Sync · Backups
+[freshness footer · gear = fast practice timing]
+```
+
+**Bank rows are gone.** They never navigated anywhere (they set `sidebar = .device` and fired
+`bankJumpRequest`) — a scroll command filed as four permanent destinations. Base §3's reachability
+guarantee for 512 slots is preserved, relocated: **Jump to Bank** is a toolbar menu on `SlotListView`,
+beside the sticky bank headers it scrolls to. `SlotID.bankLabel` and the `ScrollViewReader` plumbing
+are unchanged.
+
+**Per-collection sidebar rows are gone** (§26.1). `SidebarSelection.collection(id:)` is deleted — it
+was already unreachable from scene restore and mapped to the same content view as `.collections`.
+`DetailSelection.collection(id:)` is unchanged and is the real item selection.
+
+`SidebarSelection` as shipped:
+
+```
+enum SidebarSelection { case device; case library(tag:); case favorites;
+                        case collections; case sync; case backups }
+```
+
+A stored `"audition"` scene value from an older build restores to `.library(tag: nil)`.
+
+### 30.2 Audition is a feature, not a place
+
+The Audition sidebar row and `AuditionView` are deleted. Auditioning is now an **action on the list
+you are looking at**, because the queue should be what is on screen: with a 32-preset collection open,
+the old panel still said "Unrated presets in view 974".
+
+**Surfaces.** An `AuditionButton` ("Audition…") appears on:
+
+| Surface | Queue | Label in the popover |
+|---|---|---|
+| `CollectionDetailView` (toolbar **and** an action row) | the collection's refs resolved to library entries, in slot order | `Ambient Peaks · 32 presets in this collection` |
+| `LibraryListView` (toolbar) | `filtered(tag:)` with the live category / tag / search facets | `All Presets`, or `All Presets · Bass · #dark · "pluck"` |
+| `FavoritesListView` (toolbar) | the same builder (`favoritesOnly` is already on) | `Favorites` |
+| `LibraryEntryDetailView` (action row) | just that entry | `'Blush Response' · 1 preset` |
+
+Device slot views get **no** audition affordance: a device slot's preset is already audible from the
+panel, and a slot row has only a sha — there may be no library entry to file a verdict against.
+
+**The popover (`AuditionSetupPopover`)** is built ONCE, when it opens (`AuditionRequest` is
+`Identifiable` and rides `.popover(item:)`), never inside a view body — building it in `body` would
+re-sort the whole library per pass. It states, top to bottom:
+
+1. how many presets, and where they came from — plus, for a collection, *"N presets here aren't in
+   the library — they can't be judged and are skipped"* (verdicts are filed on library entry ids, so
+   an unresolvable ref genuinely cannot be auditioned; it is counted, never dropped silently);
+2. **Unrated (n) / All (n)** — unrated is the default. `AuditionSession.unrated` (core) stays the
+   single definition, so the Swift and Python cores cannot drift. This toggle scopes the **queue
+   only**; it never writes `LibraryModel.verdictFilter`, so the list never changes under the user;
+3. **Slot to borrow** — the `expendableSlots` picker and both footnotes, verbatim from the old start
+   screen;
+4. **Start**, with its own inline reason when disabled (no device / a long op running / a slot already
+   on loan) and the Program Change Receive hint.
+
+**The running session (`AuditionSessionView`)** is a `fullScreenCover` presented from `RootView`, so
+it sits *above* the split view: no column bar can clip it and no navigation can lose it. It carries
+the source label and the borrowed slot number in its header, and **Minimize / Skip / Stop** in its
+bottom bar.
+
+### 30.3 The borrowed-slot guarantee is unchanged, and now survives navigation
+
+The device path is byte-for-byte what shipped: read the original, verified-write each preset, Program
+Change select, file the verdict, verified-restore the original — every touch a `.quick` op on the one
+device queue.
+
+What changed is that the promise now outlives the screen. `AuditionModel.needsRestore` is true from
+the moment a session exists until the slot is back:
+
+- **Minimize** dismisses the cover and keeps the session. A standing banner — *"Auditioning
+  'Ambient Peaks' — slot 512 borrowed. [Resume] [Stop & Restore]"* — sits in `RootView`'s passive
+  banner stack with **no dismiss control**; hiding an outstanding loan is not a thing the user should
+  be able to do.
+- **`start` guards on `session == nil`**, never on a phase test: a `.failed` session still holds the
+  borrowed slot's original, and starting over it would overwrite the session and lose that original
+  forever. (`isActive` is gone; nothing read it.)
+- **`reset()` clears `judged`**, so the next session's "N verdicts filed" toast is not inflated.
+- **Cross-feature interlock.** While a slot is on loan, `canSwitchDevice()`, `disconnect()`,
+  `requestCollectionApply`, `requestRestore` and **`runFullBackup`** all refuse with a message naming
+  the slot, and the Apply and Back Up Now buttons (Device screen *and* Backups screen, plus Resume)
+  disable with the same string as their inline reason. Without this, an Apply or Restore would write
+  the borrowed slot and the audition's own restore would silently revert it, and a full read would
+  record the audition preset as that slot's contents. The backup interlock lives on `runFullBackup`,
+  not on `backUpNow`, because Resume, Read Device & Compare and Create from Device all reach the same
+  pass by other routes.
+- **Per-slot interlock.** `auditionBlockReason(for:)` refuses a write to the borrowed slot from the
+  single-write paths too — `requestSend` (both forms), paste, `renameSlot`, and `execute` as the
+  choke point every plan shares. A confirmed, journaled, undo-stacked send to the borrowed slot would
+  otherwise be silently reverted by `stop()`.
+- **Transport loss** (`handleTransportLoss`) calls `audition.deviceLost()`: the session and
+  `needsRestore` survive, the banner stays up, and Stop writes the kept original through whatever
+  device is connected *now* (same identity only — a hardware original is never spent on the practice
+  sim) — restoring is impossible at that moment, not forever. With no device at all, Stop says so and
+  keeps the session rather than discarding the original. A transport failure raised **by an audition
+  op** routes there too: `AuditionModel.fail` forwards `.transport` / `.transportUnavailable` to
+  `handleTransportLoss`, so the sidebar stops reporting "Connected" over a dead cable.
+
+### 30.6 Keeping the promise (loan-safety corrections)
+
+Round two on hardware found four ways the borrowed original could still be lost. All four are closed:
+
+1. **A failed restore no longer discards the session.** `stop()` used to `reset()` in a `defer`, so a
+   single timeout or verify mismatch cleared `needsRestore` over a slot that still held the audition
+   preset: banner gone, every block lifted, no Retry, and the only copy of the original deallocated.
+   The catch path now keeps the session (core `AuditionSession.stop()` is idempotent and still holds
+   `original`), sets `.failed`, and toasts with `isError: true`. Stop is the retry. `restoring`
+   guards against a double-tap enqueueing two restores.
+2. **A failed start now releases the session.** The read of the original never landed, so nothing was
+   borrowed; keeping `session != nil` locked Apply, backup, restore and the device switch forever
+   over an untouched slot and left its busy spinner on.
+3. **The reconnect deadlock is gone.** `canSwitchDevice()` and `disconnect()` refuse for an audition
+   only while `device != nil`. With the transport already lost there is nothing to protect and
+   reconnecting *is* the route back; blocking it meant Stop said "reconnect first" while Connect said
+   "stop the audition first", with the preset only in memory.
+4. **The original is written to disk** (`Documents/audition-loan.json`, `AuditionLoan` +
+   `AuditionLoanStore`) the moment it is read, and deleted only when the slot is verifiably back. A
+   crash, a force-quit or an iPadOS termination now leaves a record — surfaced at launch as
+   `AuditionLoanRecoveryBanner` ("Slot 512 still holds an audition preset. Its original 'Perc Organ'
+   is saved. [Put It Back] [Forget]") — instead of a silently occupied slot the app has forgotten.
+   The session screen's failed state gains **Put It Back Later** (`abandon()`), which hands the
+   promise to that record rather than pretending the loan is settled; starting a new audition is
+   refused while a record is outstanding.
+
+Two presentation fixes ride along:
+
+- The standing loan banner is gated on the cover being **actually on screen**
+  (`coverVisible`, set from `AuditionSessionView.onAppear/onDisappear`), not on the `presented` flag.
+  A cover that fails to present (asked for while the setup popover dismisses) previously suppressed
+  the banner *and* showed nothing — a live loan with no Stop anywhere. It also rides the detail
+  column in compact layouts, where the content column's top inset is off-screen.
+- The borrowed slot is read from `AuditionModel.borrowedSlot`, captured when the session is
+  constructed. The mutable `slot` stays bound to the setup Picker; the restore must not follow it.
+
+### 30.4 List responsiveness
+
+Entering **All Presets** and **Favorites** was visibly slow. The cause was not the rows: it was
+`LibraryModel`'s derived state being recomputed from scratch inside view bodies, several times per
+navigation, dominated by a name sort whose comparator called `String.lowercased()` on both operands
+(~19 000 case-folds per call over 966 entries).
+
+`LibraryModel` now precomputes, in one pass per input change (`refresh()` and a `didSet` on every
+facet): `displayRows`, `displayCategoryCounts`, `hasAnyFavorite`, plus `@ObservationIgnored` caches
+for the lowercased sort keys and an id → index map. `allTagNames` depends on `entries` alone and is
+rebuilt with them, not per keystroke. Reassignment is equality-guarded where the value usually does
+not move (Observation has no equality check of its own, so an identical write still invalidates every
+observer), and `favoritesOnly`'s `didSet` returns early when the value has not changed — `RootView`
+assigns it on every sidebar change.
+
+`SlotBrowserModel` got the same treatment, which the first pass missed: `filteredSlots` was a
+*computed* property that mapped or filtered all 512 rows per access, and `SlotListView` built a
+512-element `Set` from it once per bank per body pass while `bankSummary` did 128 lookups plus two
+filters per bank — with one body pass per streamed name during the ~2 s names read, on the screen the
+app opens by default. `filteredSlots`, `filteredByBank` and `bankSummaries` are now stored and
+recomputed only when their inputs change. `filtered(tag:)` keeps its signature: `nil` (the only path in practice) is now a
+stored-array read, and the single-tag branch post-filters the already-sorted rows.
+
+Also fixed: the query and the tag-filter `Set` construction were rebuilt inside the per-entry loop;
+`corruptEntries[id] = nil` was written unconditionally on every successful `preset(id:)` (mutating an
+observed dictionary invalidates every realized row); library rows subscribed individually to
+`slots.syncBadges` and `corruptEntries`, both reassigned wholesale on every `recomputeSync()`, so
+those are now resolved once per list body and passed in; bulk favorite / add-tag do one `refresh()`
+for the whole selection instead of one per id.
+
+`FavoritesListView` no longer sets `favoritesOnly` from `onAppear` / `onDisappear`. SwiftUI runs
+`body` **before** `onAppear`, so entering Favorites built and diffed a full 966-row list and threw it
+away; worse, the shared flag could be left stuck on. `RootView` sets it from the sidebar selection,
+where the selection is already known.
+
+### 30.5 View inventory delta
+
+```
+Deleted   AuditionView.swift · StatusBarView (the struct) · ConnectionCapsule
+New       AuditionSetupPopover.swift (AuditionButton, AuditionSetupPopover)
+          AuditionSessionView.swift
+          AppModelAudition.swift     (auditionRequest builders, auditionBlockReason)
+          AuditionLoanBanner         (RootView)
+          DeviceStatusRow            (SidebarView)
+          DeviceActivityToolbarModifier / .deviceActivityToolbar()  (StatusBarView.swift)
+          AuditionLoanRecoveryBanner (RootView)
+          AuditionLoan / AuditionLoanStore (Support/AuditionLoan.swift)
+Kept      ActiveOperationView · OperationsPopover (re-homed, unchanged content)
+Model     AuditionRequest (app-layer value type; `unratedOnly`/`queue` deleted —
+                           the popover owns that choice, they were dead)
+          AuditionModel: start(_:queue:sourceLabel:) · needsRestore · borrowedSlot ·
+                         presented · coverVisible · sourceLabel · deviceLost() ·
+                         blockReason · abandon()
+          AppModel:      pendingAuditionLoan · persistAuditionLoan · clearAuditionLoan ·
+                         restorePendingAuditionLoan · discardPendingAuditionLoan ·
+                         auditionBlockReason(for:) · auditionStartBlockReason()
+          LibraryModel:  displayRows · displayCategoryCounts · allTagNames ·
+                         hasAnyFavorite · setFavorite(ids:) · addTag(ids:)
+          SlotBrowserModel: filteredSlots · filteredByBank · bankSummaries (stored)
+```
+
+No FreakCore public API changed — in either round; `AuditionSession` already took an explicit queue
+and its `stop()` was already idempotent, so there is no Python-core parity work in this revision. The
+one place the app deliberately bypasses `AuditionSession.stop()` is the lost-device restore, which
+must write through a *different* device object; the core's `restored` flag therefore stays false on
+that path. Teaching the core a "restore through this device" entry point would be a public API change
+with Python parity work, and the app-side session is discarded immediately afterwards either way.

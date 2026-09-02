@@ -134,6 +134,10 @@ struct LibraryEntryDetailView: View {
                     Label("Send to Slot…", systemImage: "arrow.right.square")
                 }
                 .disabled(!model.connection.hasDevice)
+                // "Hear it now" — one preset, same borrowed-slot guarantee.
+                AuditionButton(titleKey: "Audition this preset…") {
+                    model.auditionRequest(for: entry)
+                }
                 Button {
                     model.requestAssignSlotPicker(entryID: entry.id)
                 } label: {

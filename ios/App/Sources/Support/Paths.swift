@@ -14,13 +14,20 @@ struct AppPaths: Sendable {
     let libraryRoot: URL
     let backupsRoot: URL
     let historyURL: URL
+    /// The outstanding audition loan, if any (AuditionLoan). Present only
+    /// between "the borrowed slot's original was read" and "it is verified
+    /// back in place" — so anything found here at launch is a slot the app
+    /// still owes the user.
+    let auditionLoanURL: URL
 
     static func documents() -> AppPaths {
         let docs = FileManager.default.urls(for: .documentDirectory,
                                             in: .userDomainMask)[0]
         return AppPaths(libraryRoot: docs.appendingPathComponent("Library"),
                         backupsRoot: docs.appendingPathComponent("Backups"),
-                        historyURL: docs.appendingPathComponent("history.json"))
+                        historyURL: docs.appendingPathComponent("history.json"),
+                        auditionLoanURL: docs
+                            .appendingPathComponent("audition-loan.json"))
     }
 
     /// An isolated, throwaway location — previews and tests only.
@@ -29,7 +36,9 @@ struct AppPaths: Sendable {
             .appendingPathComponent("FreakLibrarianPreview-\(UUID().uuidString)")
         return AppPaths(libraryRoot: root.appendingPathComponent("Library"),
                         backupsRoot: root.appendingPathComponent("Backups"),
-                        historyURL: root.appendingPathComponent("history.json"))
+                        historyURL: root.appendingPathComponent("history.json"),
+                        auditionLoanURL: root
+                            .appendingPathComponent("audition-loan.json"))
     }
 
     /// "2026-09-01-143205"
