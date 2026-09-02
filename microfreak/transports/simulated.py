@@ -170,6 +170,26 @@ class SimulatedMicroFreak:
             return self._outbox.pop(0)
         return None
 
+    # ------------------------------------------- channel messages (select)
+
+    # Bank Select + Program Change, as a real MicroFreak with "Program Change
+    # Receive" on would apply them. `selected_slot` is what the panel shows.
+    selected_slot: Optional[int] = None
+    _bank: int = 0
+
+    def send_short(self, message: bytes) -> None:
+        raw = bytes(message)
+        self.wire_log.append(("out", raw))
+        if not raw:
+            return
+        status, data = raw[0] & 0xF0, raw[1:]
+        if status == 0xB0 and len(data) == 2 and data[0] in (0x00, 0x20):
+            self._bank = data[1] & 0x03
+        elif status == 0xC0 and len(data) >= 1:
+            self.selected_slot = self._bank * 128 + (data[0] & 0x7F)
+        else:
+            self.faults.append(f"unexpected channel message: {raw.hex()}")
+
     def close(self) -> None:
         pass
 

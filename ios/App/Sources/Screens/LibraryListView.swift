@@ -370,6 +370,7 @@ struct LibraryRowView: View {
                     Text(entry.name).font(.body)
                     HStack(spacing: 4) {
                         CategoryBadge(category: entry.category)
+                        VerdictBadge(verdict: entry.verdict)
                         ForEach(entry.tags, id: \.self) { TagChip(tag: $0) }
                     }
                 }

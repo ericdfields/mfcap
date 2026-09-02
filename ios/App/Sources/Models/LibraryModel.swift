@@ -154,6 +154,7 @@ final class LibraryModel {
             return false
         }
         if favoritesOnly, !entry.favorite { return false }
+        if let verdictFilter, entry.verdict != verdictFilter { return false }
         if !tagFilter.isSubset(of: Set(entry.tags)) { return false }
         let query = searchText.trimmingCharacters(in: .whitespaces).lowercased()
         if !query.isEmpty {
@@ -284,6 +285,15 @@ final class LibraryModel {
         for id in ids {
             _ = try? await library.setCategory(id: id, to: category)
         }
+        await refresh()
+    }
+
+    /// Audition verdict facet: nil = all; `.unrated` = "not yet judged".
+    var verdictFilter: Verdict?
+
+    func setVerdict(id: String, _ verdict: Verdict) async {
+        guard let library else { return }
+        _ = try? await library.setVerdict(id: id, to: verdict)
         await refresh()
     }
 

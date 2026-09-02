@@ -33,6 +33,8 @@ from .protocol import (BLOB_SIZE, CHUNK_COUNT, CHUNK_SIZE,   # noqa: F401
 from .session import Session                                 # noqa: F401
 from .sync import SlotDiff, SlotStatus, SyncDiff, diff       # noqa: F401
 from .transport import Transport                             # noqa: F401
+from .model import Verdict                                   # noqa: F401
+from .audition import AuditionSession                        # noqa: F401
 
 
 def open_device(**open_kwargs) -> MicroFreak:

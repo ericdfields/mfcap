@@ -95,6 +95,8 @@ struct RootView: View {
             LibraryListView(tag: tag)
         case .favorites:
             FavoritesListView()
+        case .audition:
+            AuditionView()
         case .collections, .collection:
             CollectionsListView()
         case .sync:
@@ -215,6 +217,7 @@ struct RootView: View {
         case "collections": return .collections
         case "sync": return .sync
         case "backups": return .backups
+        case "audition": return .audition
         default: return .device
         }
     }
@@ -223,6 +226,7 @@ struct RootView: View {
         switch selection {
         case .library: return "library"
         case .favorites: return "favorites"
+        case .audition: return "audition"
         // A specific collection restores to the section (never a resumed op).
         case .collections, .collection: return "collections"
         case .sync: return "sync"

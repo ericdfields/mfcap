@@ -99,6 +99,17 @@ public actor FreakSession {
         }
     }
 
+    /// Make the device load `slot` (Bank Select + Program Change). Not a
+    /// request/reply exchange — nothing comes back — but it runs under the
+    /// gate so it never interleaves with a SysEx transaction.
+    public func selectPreset(slot: Int, channel: UInt8 = 0) async throws {
+        try await withTransaction {
+            for message in MIDIShort.selectPresetMessages(slot: slot, channel: channel) {
+                try await self.transport.sendShort(message)
+            }
+        }
+    }
+
     public func close() async {
         await transport.close()
     }

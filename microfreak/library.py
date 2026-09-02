@@ -27,7 +27,7 @@ from .collections import (BankItem, PresetCollection, Provenance,
                           collection_to_json)
 from .errors import (CollectionNotFoundError, EntryNotFoundError,
                      IntegrityError, LibraryCorruptError, SlotOutOfRangeError)
-from .model import Category, DeviceSnapshot, Preset, PresetRef
+from .model import Category, DeviceSnapshot, Preset, PresetRef, Verdict
 from .protocol import DUPLICATE_THRESHOLD, SLOTS, digest
 
 _SCHEMA = 1
@@ -45,13 +45,15 @@ class LibraryEntry:
     tags: Tuple[str, ...]
     category: Category = Category.UNCATEGORIZED   # editable; auto-filled from meta[7] on device import
     favorite: bool = False
+    verdict: Verdict = Verdict.UNRATED             # audition verdict (additive, back-compat)
 
 
 def _entry_to_json(e: LibraryEntry) -> dict:
     return {"id": e.id, "name": e.name, "sha256": e.sha256,
             "meta_hex": e.meta_hex, "slot": e.slot, "added_at": e.added_at,
             "tags": list(e.tags),
-            "category": e.category.slug, "favorite": bool(e.favorite)}
+            "category": e.category.slug, "favorite": bool(e.favorite),
+            "verdict": e.verdict.slug}
 
 
 def _entry_from_json(d: dict) -> LibraryEntry:
@@ -60,7 +62,8 @@ def _entry_from_json(d: dict) -> LibraryEntry:
                         added_at=d.get("added_at", ""),
                         tags=tuple(d.get("tags") or ()),
                         category=Category.from_slug(d.get("category", "uncategorized")),
-                        favorite=bool(d.get("favorite", False)))
+                        favorite=bool(d.get("favorite", False)),
+                        verdict=Verdict.from_slug(d.get("verdict", "unrated")))
 
 
 # --------------------------------------------------------- read helpers (pure)
@@ -212,7 +215,7 @@ class Library:
                         tags=tuple(dict.fromkeys((*e.tags, *tags))),
                         favorite=e.favorite or bool(favorite),
                         category=(category if e.category == Category.UNCATEGORIZED
-                                  else e.category))
+                                  else e.category))   # verdict: keep e's
                     self._entries[i] = merged
                     self._save()
                     return merged
@@ -248,7 +251,9 @@ class Library:
                     tags=tuple(dict.fromkeys((*p.tags, *e.tags))),
                     favorite=p.favorite or e.favorite,
                     category=(e.category if p.category == Category.UNCATEGORIZED
-                              else p.category))
+                              else p.category),
+                    verdict=(e.verdict if p.verdict == Verdict.UNRATED
+                             else p.verdict))
         removed = len(self._entries) - len(order)
         if removed:
             self._entries = [keep[k] for k in order]
@@ -260,6 +265,9 @@ class Library:
 
     def set_favorite(self, entry_id: str, favorite: bool) -> LibraryEntry:
         return self._replace_entry(entry_id, favorite=bool(favorite))
+
+    def set_verdict(self, entry_id: str, verdict: Verdict) -> LibraryEntry:
+        return self._replace_entry(entry_id, verdict=verdict)
 
     def set_tags(self, entry_id: str, tags: Sequence[str]) -> LibraryEntry:
         return self._replace_entry(entry_id, tags=tuple(tags))

@@ -32,6 +32,8 @@ struct SidebarView: View {
                            systemImage: "books.vertical")
                 sidebarRow(.favorites, label: "Favorites",
                            systemImage: "heart")
+                sidebarRow(.audition, label: "Audition",
+                           systemImage: "play.circle")
                 ForEach(model.libraryModel.tags, id: \.self) { tag in
                     sidebarRow(.library(tag: tag), label: tag,
                                systemImage: "tag")

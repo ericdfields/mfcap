@@ -248,6 +248,77 @@ struct CategoryPickerRow: View {
 /// The one heart toggle used on rows and in detail (§24.1). 44 pt target;
 /// favorite state is a trait, never color-only. `disabledReason` (device
 /// rows without a hash) shows honestly and blocks the tap (§24.2).
+/// The four-state audition verdict as a menu row (detail view).
+struct VerdictPickerRow: View {
+    let verdict: Verdict
+    let onChange: (Verdict) -> Void
+
+    var body: some View {
+        LabeledContent("Verdict") {
+            Menu {
+                ForEach([Verdict.unrated] + Verdict.promptOrder, id: \.self) { option in
+                    Button {
+                        onChange(option)
+                    } label: {
+                        if option == verdict {
+                            Label(option.displayName, systemImage: "checkmark")
+                        } else {
+                            Label(option.displayName, systemImage: option.systemImage)
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: verdict.systemImage)
+                    Text(verdict.displayName)
+                    Image(systemName: "chevron.up.chevron.down").font(.caption2)
+                }
+            }
+        }
+    }
+}
+
+/// Compact verdict marker for list rows; nothing is drawn while unrated.
+struct VerdictBadge: View {
+    let verdict: Verdict
+
+    var body: some View {
+        if verdict != .unrated {
+            Label(verdict.displayName, systemImage: verdict.systemImage)
+                .font(.caption2)
+                .labelStyle(.iconOnly)
+                .foregroundStyle(verdict == .keep ? .green
+                                 : verdict == .never ? .red : .secondary)
+                .accessibilityLabel("Verdict: \(verdict.displayName)")
+        }
+    }
+}
+
+/// The audition prompt: one big tap per verdict (UX: standing at the synth).
+struct VerdictChips: View {
+    let onPick: (Verdict) -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            ForEach(Verdict.promptOrder, id: \.self) { v in
+                Button {
+                    onPick(v)
+                } label: {
+                    VStack(spacing: 6) {
+                        Image(systemName: v.systemImage).font(.title)
+                        Text(v.displayName).font(.callout.weight(.semibold))
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 88)
+                }
+                .buttonStyle(.bordered)
+                .tint(v == .keep ? .green : v == .never ? .red : .accentColor)
+                .keyboardShortcut(KeyEquivalent(Character("\(Verdict.promptOrder.firstIndex(of: v)! + 1)")),
+                                  modifiers: [])
+            }
+        }
+    }
+}
+
 struct FavoriteToggle: View {
     let isFavorite: Bool
     var disabledReason: String? = nil

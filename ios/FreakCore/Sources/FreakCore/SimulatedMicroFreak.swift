@@ -231,6 +231,27 @@ public actor SimulatedMicroFreak: FreakTransport {
         }
     }
 
+    // ------------------------------------------- channel messages (select)
+
+    /// What the panel shows after Bank Select + Program Change, as a real
+    /// MicroFreak with "Program Change Receive" on would apply them.
+    public private(set) var selectedSlot: Int? = nil
+    private var bankSelect = 0
+
+    public func sendShort(_ message: Data) async throws {
+        wireLogList.append(WireLogEntry(direction: .out, raw: message))
+        guard let status = message.first else { return }
+        let data = Array(message.dropFirst())
+        switch status & 0xF0 {
+        case 0xB0 where data.count == 2 && (data[0] == 0x00 || data[0] == 0x20):
+            bankSelect = Int(data[1] & 0x03)
+        case 0xC0 where !data.isEmpty:
+            selectedSlot = bankSelect * Wire.slotsPerBank + Int(data[0] & 0x7F)
+        default:
+            faultsList.append("unexpected channel message: \(message.hexString)")
+        }
+    }
+
     /// FIFO outbox pop; nil immediately when empty — no real waiting.
     public func receive(timeout: TimeInterval) async throws -> Data? {
         guard !outbox.isEmpty else {

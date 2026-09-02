@@ -32,4 +32,16 @@ public protocol FreakTransport: Sendable {
     /// Release the backend. Idempotent. Subsequent send/receive throw
     /// .transport.
     func close() async
+
+    /// One MIDI channel message (Program Change / Control Change, 2-3 bytes,
+    /// status byte first). Used only to make the synth select a preset;
+    /// nothing is expected back. Backends that cannot carry channel
+    /// messages inherit the throwing default.
+    func sendShort(_ message: Data) async throws
+}
+
+public extension FreakTransport {
+    func sendShort(_ message: Data) async throws {
+        throw FreakError.transport(detail: "transport cannot send channel messages")
+    }
 }

@@ -28,10 +28,12 @@ public struct LibraryEntry: Sendable, Equatable, Identifiable {
     public let tags: [String]
     public let category: Category    // editable; auto-filled from meta[7] on device import
     public let favorite: Bool
+    public let verdict: Verdict      // audition verdict (additive, back-compat)
 
     public init(id: String, name: String, sha256: String, metaHex: String,
                 slot: Int?, addedAt: String, tags: [String],
-                category: Category = .uncategorized, favorite: Bool = false) {
+                category: Category = .uncategorized, favorite: Bool = false,
+                verdict: Verdict = .unrated) {
         self.id = id
         self.name = name
         self.sha256 = sha256
@@ -41,16 +43,19 @@ public struct LibraryEntry: Sendable, Equatable, Identifiable {
         self.tags = tags
         self.category = category
         self.favorite = favorite
+        self.verdict = verdict
     }
 
     fileprivate func with(name: String? = nil, slot: Int?? = nil,
                           tags: [String]? = nil, category: Category? = nil,
-                          favorite: Bool? = nil) -> LibraryEntry {
+                          favorite: Bool? = nil,
+                          verdict: Verdict? = nil) -> LibraryEntry {
         LibraryEntry(id: id, name: name ?? self.name, sha256: sha256,
                      metaHex: metaHex, slot: slot ?? self.slot,
                      addedAt: addedAt, tags: tags ?? self.tags,
                      category: category ?? self.category,
-                     favorite: favorite ?? self.favorite)
+                     favorite: favorite ?? self.favorite,
+                     verdict: verdict ?? self.verdict)
     }
 }
 
@@ -155,7 +160,8 @@ public actor Library {
                 // additive back-compat: an index predating these keys loads
                 // with defaults (category=uncategorized, favorite=false).
                 category: Category.fromSlug(d["category"] as? String ?? "uncategorized"),
-                favorite: (d["favorite"] as? NSNumber)?.boolValue ?? false))
+                favorite: (d["favorite"] as? NSNumber)?.boolValue ?? false,
+                verdict: Verdict.fromSlug(d["verdict"] as? String ?? "unrated")))
         }
         return Library(root: root, entries: entries)
     }
@@ -169,7 +175,8 @@ public actor Library {
                  "slot": e.slot.map { $0 as Any } ?? NSNull(),  // null written explicitly
                  "added_at": e.addedAt,
                  "tags": e.tags,
-                 "category": e.category.slug, "favorite": e.favorite]
+                 "category": e.category.slug, "favorite": e.favorite,
+                 "verdict": e.verdict.slug]
             },
         ]
         try AtomicFile.write(try jsonData(payload),
@@ -318,7 +325,8 @@ public actor Library {
                     slot: p.slot ?? e.slot,
                     tags: orderedUnion(p.tags, e.tags),
                     category: p.category == .uncategorized ? e.category : p.category,
-                    favorite: p.favorite || e.favorite)
+                    favorite: p.favorite || e.favorite,
+                    verdict: p.verdict == .unrated ? e.verdict : p.verdict)
             } else {
                 keep[key] = e
                 order.append(key)
@@ -336,6 +344,12 @@ public actor Library {
     @discardableResult
     public func setCategory(id: String, to category: Category) throws -> LibraryEntry {
         try replaceEntry(id: id) { $0.with(category: category) }
+    }
+
+    /// Set the audition verdict. Rewrites the index atomically.
+    @discardableResult
+    public func setVerdict(id: String, to verdict: Verdict) throws -> LibraryEntry {
+        try replaceEntry(id: id) { $0.with(verdict: verdict) }
     }
 
     /// Set the favorite flag. Rewrites the index atomically.

@@ -96,6 +96,10 @@ struct LibraryEntryDetailView: View {
                     Task { await model.libraryModel
                         .setCategory(id: entry.id, newCategory) }
                 }
+                VerdictPickerRow(verdict: entry.verdict) { newVerdict in
+                    Task { await model.libraryModel
+                        .setVerdict(id: entry.id, newVerdict) }
+                }
             }
 
             Section("Tags") {

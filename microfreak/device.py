@@ -160,6 +160,17 @@ class MicroFreak:
         return WriteReport(slot=slot, sha256="", name=name, verified=verified,
                            duration_seconds=self.clock() - t0)
 
+    # ------------------------------------------------------ select (audition)
+
+    def select(self, slot: int, channel: int = 0) -> None:
+        """Make the synth load `slot` on its panel via Bank Select + Program
+        Change. Fire-and-forget: the device confirms nothing over MIDI, and
+        it ignores this entirely if its "Program Change Receive" setting is
+        off — surface that in the UI when a selection seems not to take."""
+        if not 0 <= slot < self.slots:
+            raise SlotOutOfRangeError(slot)
+        self._session.select_preset(slot, channel)
+
     # -------------------------------------------------- apply / switch a collection
 
     def apply_collection(self, plan: ApplyPlan,

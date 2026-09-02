@@ -38,6 +38,7 @@ enum SidebarSelection: Hashable {
     case device
     case library(tag: String?)
     case favorites                     // UX addendum §24.3
+    case audition                      // play through unrated presets, one tap each
     case collections                   // UX addendum §26 (section / All Collections)
     case collection(id: String)        // UX addendum §26 (one collection child)
     case sync
@@ -125,6 +126,7 @@ final class AppModel {
     let paths: AppPaths
     let operations = DeviceOperationQueue()
     let toasts = ToastCenter()
+    let audition = AuditionModel()
     let undoStack = UndoStack()
     let freshness = FreshnessModel()
     let slots = SlotBrowserModel()

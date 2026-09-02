@@ -62,6 +62,34 @@ class Category(enum.Enum):
         return "SFX" if self is Category.SFX else self.name.title().replace("_", " ")
 
 
+class Verdict(enum.Enum):
+    """The audition verdict — a 4-state value judgement, deliberately not a
+    star scale: it mirrors how a patch is actually filed after playing it.
+    Values are the stable wire slug shared by both cores; UNRATED is the
+    default and is never written as a filter target."""
+    UNRATED = "unrated"
+    KEEP = "keep"            # "yes, I'll use this"
+    TRY_LATER = "try_later"  # "not doing it for me now, but someday"
+    MEH = "meh"              # "not interesting right now"
+    NEVER = "never"          # "I'll definitely never use this"
+
+    @classmethod
+    def from_slug(cls, slug: str) -> "Verdict":
+        try:
+            return cls(slug)
+        except ValueError:
+            return cls.UNRATED
+
+    @property
+    def slug(self) -> str:
+        return self.value
+
+    @property
+    def display_name(self) -> str:
+        return {"unrated": "Unrated", "keep": "Keep", "try_later": "Try later",
+                "meh": "Meh", "never": "Never"}[self.value]
+
+
 # THE one device-byte -> Category table. index == the device category byte
 # (meta[7] == long-0x52 payload[10]). HARDWARE-CONFIRMABLE: this index map is
 # NOT proven against ground truth (only slot-200's 0x03 is observed). Confirm

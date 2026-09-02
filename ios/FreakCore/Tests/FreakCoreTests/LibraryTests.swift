@@ -158,9 +158,11 @@ struct LibraryTests {
         #expect((index["schema"] as? NSNumber)?.intValue == 1)
         let d = (index["entries"] as! [[String: Any]])[0]
         #expect(Set(d.keys) == ["id", "name", "sha256", "meta_hex", "slot",
-                                "added_at", "tags", "category", "favorite"])
+                                "added_at", "tags", "category", "favorite",
+                                "verdict"])
         #expect(d["category"] as? String == "uncategorized")
         #expect(d["favorite"] as? Bool == false)
+        #expect(d["verdict"] as? String == "unrated")
         // pinned timestamp shape: "yyyy-MM-dd'T'HH:mm:ss"
         let addedAt = d["added_at"] as! String
         #expect(addedAt.count == 19 && addedAt[addedAt.index(addedAt.startIndex,

@@ -47,6 +47,11 @@ public protocol FreakDeviceProtocol: Sendable {
                          verify: Bool,
                          progress: ProgressReporter?) async throws -> [WriteReport]
 
+    /// Make the synth load `slot` on its panel (Bank Select + Program Change).
+    /// Fire-and-forget: the device confirms nothing over MIDI, and it ignores
+    /// this entirely if its "Program Change Receive" setting is off.
+    func select(slot: Int) async throws
+
     func close() async
 }
 
@@ -101,6 +106,13 @@ public final class MicroFreakDevice: FreakDeviceProtocol, Sendable {
 
     public func close() async {
         await session.close()
+    }
+
+    public func select(slot: Int) async throws {
+        guard (0..<slotCount).contains(slot) else {
+            throw FreakError.slotOutOfRange(slot: slot)
+        }
+        try await session.selectPreset(slot: slot)
     }
 
     // ------------------------------------------------------------- reads

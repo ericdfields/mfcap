@@ -141,6 +141,10 @@ class RtMidiTransport:
         except Exception as e:
             raise TransportError(f"send failed: {e}") from e
 
+    def send_short(self, message: bytes) -> None:
+        """One channel message (Program Change / Control Change), 2-3 bytes."""
+        self.send(message)
+
     def receive(self, timeout: float) -> Optional[bytes]:
         try:
             if timeout <= 0:

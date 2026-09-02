@@ -66,6 +66,18 @@ class Session:
         with self._lock:
             return self._read_blob_locked(slot)
 
+    def select_preset(self, slot: int, channel: int = 0) -> None:
+        """Make the device load `slot` (Bank Select + Program Change). Not a
+        request/reply exchange — nothing comes back — but it takes the lock so
+        it never interleaves with a SysEx transaction."""
+        from .protocol import select_preset_messages
+        send_short = getattr(self.transport, "send_short", None)
+        if send_short is None:
+            raise TransportError("transport cannot send channel messages")
+        with self._lock:
+            for msg in select_preset_messages(slot, channel):
+                send_short(msg)
+
     def write_preset(self, slot: int, preset: Preset,
                      cancel: Optional[CancelToken] = None) -> NameInfo:
         """The gate-verified 7-frame write sequence, verbatim from

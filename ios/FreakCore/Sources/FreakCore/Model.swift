@@ -118,6 +118,43 @@ public struct Preset: Sendable, Equatable {
 /// meta needed to write it faithfully. Content-keyed (not entry-id-keyed), so
 /// it survives entry rename/delete and captures the exact name+meta of the
 /// arrangement. Resolvable to a Preset given the blob (Library.presetForRef).
+/// The audition verdict — a 4-state value judgement, deliberately not a star
+/// scale: it mirrors how a patch is actually filed after playing it. Raw
+/// values are the stable wire slug shared with the Python core; `.unrated`
+/// is the default and never a filter target.
+public enum Verdict: String, Sendable, CaseIterable, Codable, Equatable {
+    case unrated, keep, tryLater = "try_later", meh, never
+
+    public static func fromSlug(_ slug: String) -> Verdict {
+        Verdict(rawValue: slug) ?? .unrated
+    }
+
+    public var slug: String { rawValue }
+
+    /// Chip order in the audition prompt: best to worst.
+    public static let promptOrder: [Verdict] = [.keep, .tryLater, .meh, .never]
+
+    public var displayName: String {
+        switch self {
+        case .unrated: return "Unrated"
+        case .keep: return "Keep"
+        case .tryLater: return "Try later"
+        case .meh: return "Meh"
+        case .never: return "Never"
+        }
+    }
+
+    public var systemImage: String {
+        switch self {
+        case .unrated: return "circle.dashed"
+        case .keep: return "checkmark.circle.fill"
+        case .tryLater: return "clock"
+        case .meh: return "minus.circle"
+        case .never: return "xmark.circle"
+        }
+    }
+}
+
 public struct PresetRef: Sendable, Equatable {
     public let sha256: String     // 64 lowercase hex; addresses blobs/<sha256>.bin
     public let name: String       // validated printable ASCII (<= 23), as written

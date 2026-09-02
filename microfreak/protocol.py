@@ -248,6 +248,34 @@ def assemble_blob(chunks: Sequence[Frame]) -> bytes:
     return bytes(out)
 
 
+# ------------------------------------------------ channel messages (non-SysEx)
+# The MicroFreak switches presets on MIDI Program Change ("Program Change
+# Receive", user manual §MicroFreak Configuration — it can be turned off there).
+# 512 presets = 4 banks x 128: Bank Select then Program Change. The manual does
+# not state whether the device reads the MSB (CC0) or LSB (CC32) bank byte, so
+# both carry the bank index (0..3); with only four banks no device combines
+# them. HARDWARE-CONFIRMABLE in one try; see docs/arturia-taxonomy.md.
+
+CC_BANK_MSB = 0x00
+CC_BANK_LSB = 0x20
+
+
+def control_change(channel: int, controller: int, value: int) -> bytes:
+    return bytes([0xB0 | (channel & 0x0F), controller & 0x7F, value & 0x7F])
+
+
+def program_change(channel: int, program: int) -> bytes:
+    return bytes([0xC0 | (channel & 0x0F), program & 0x7F])
+
+
+def select_preset_messages(slot: int, channel: int = 0) -> List[bytes]:
+    """The short MIDI messages that make the device load `slot` (0-based)."""
+    bank, pos = addr(slot)
+    return [control_change(channel, CC_BANK_MSB, bank),
+            control_change(channel, CC_BANK_LSB, bank),
+            program_change(channel, pos)]
+
+
 def digest(blob: bytes) -> str:
     return hashlib.sha256(blob).hexdigest()
 

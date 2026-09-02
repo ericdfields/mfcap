@@ -347,6 +347,27 @@ public final class CoreMIDITransport: FreakTransport, Sendable {
         }
     }
 
+    /// One channel message as a single 32-bit MIDI 1.0 Channel Voice UMP.
+    public func sendShort(_ message: Data) async throws {
+        guard !closed.withLock({ $0 }) else {
+            throw FreakError.transport(detail: "transport is closed")
+        }
+        guard let word = MIDIShort.umpWord(message) else {
+            throw FreakError.transport(detail: "not a channel message: \(message.hexString)")
+        }
+        var words = [word]
+        var eventList = MIDIEventList()
+        let packet = MIDIEventListInit(&eventList, ._1_0)
+        _ = words.withUnsafeMutableBufferPointer { buf in
+            MIDIEventListAdd(&eventList, MemoryLayout<MIDIEventList>.size,
+                             packet, 0, buf.count, buf.baseAddress!)
+        }
+        let status = MIDISendEventList(outputPort, destination, &eventList)
+        guard status == noErr else {
+            throw FreakError.transport(detail: "MIDISendEventList: \(status)")
+        }
+    }
+
     public func receive(timeout: TimeInterval) async throws -> Data? {
         guard !closed.withLock({ $0 }) else {
             throw FreakError.transport(detail: "transport is closed")
