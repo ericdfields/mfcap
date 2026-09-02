@@ -63,12 +63,26 @@ func median(_ xs: [Double]) -> Double? {
     return roundTo(xs.sorted()[xs.count / 2], places: 1)
 }
 
-/// Round half-to-even (banker's), matching Python's round() — so timing
-/// values written to index.json are identical to the reference core even on
-/// exact .5 boundaries (round(2.25, 1) == 2.2, not 2.3).
+/// Python's `round(x, places)`, exactly — so every rounded number this core
+/// writes is the same number the reference core writes.
+///
+/// Not `(x * 10^places).rounded(.toNearestOrEven) / 10^places`. That scales
+/// FIRST, and the product is itself rounded to a double before the tie is
+/// broken, so a value that is not a tie becomes one (or stops being one) and
+/// the answer diverges from Python's. `0.0685` is a real audio-clock value
+/// (frame 3288 at 48 kHz): the true double is 0.068500000000000005, which
+/// Python rounds UP to 0.069, while `0.0685 * 1000` lands on exactly 68.5 and
+/// banker's rounding takes it DOWN to 0.068. `0.2055` diverges the other way.
+///
+/// `%.*f` is correctly rounded (round-half-even against the TRUE binary
+/// value) in both C and Python's `float.__round__`, which is why formatting
+/// and re-parsing agrees with Python on every input rather than on most of
+/// them.
 func roundTo(_ x: Double, places: Int) -> Double {
-    let f = pow(10.0, Double(places))
-    return (x * f).rounded(.toNearestOrEven) / f
+    guard x.isFinite else { return x }
+    // locale: nil is explicit, not decorative — a locale with a comma decimal
+    // separator would produce a string `Double(_:)` cannot parse.
+    return Double(String(format: "%.\(places)f", locale: nil, x)) ?? x
 }
 
 extension Data {

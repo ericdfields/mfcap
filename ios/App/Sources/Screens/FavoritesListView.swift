@@ -27,7 +27,8 @@ struct FavoritesListView: View {
             }
         }
         .navigationTitle("Favorites")
-        .searchable(text: $libraryModel.searchText, prompt: "Name or tag")
+        .searchable(text: $libraryModel.searchText,
+                    prompt: "Name, tag or note")
         .safeAreaInset(edge: .top, spacing: 0) { CategoryFilterBar() }
         // `favoritesOnly` is owned by RootView's selection change — setting it
         // from onAppear ran a full unfiltered body pass first, then threw it
@@ -53,6 +54,7 @@ struct FavoritesListView: View {
         let statusBySha = model.sync.statusBySha
         let baselineName = model.sync.baseline?.name
         let corrupt = model.libraryModel.corruptEntries
+        let noteCounts = model.libraryModel.noteCounts
         return List {
             ForEach(model.libraryModel.filtered(tag: nil)) { entry in
                 LibraryRowView(entry: entry, renamingEntry: $renamingEntry,
@@ -60,7 +62,8 @@ struct FavoritesListView: View {
                                syncHint: LibraryRowView.syncHint(
                                    for: entry, statusBySha: statusBySha,
                                    baselineName: baselineName),
-                               corruptDetail: corrupt[entry.id])
+                               corruptDetail: corrupt[entry.id],
+                               noteCount: noteCounts[entry.id] ?? 0)
             }
         }
         .listStyle(.plain)

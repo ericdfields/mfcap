@@ -42,7 +42,10 @@ struct LibraryListView: View {
             for item in items { model.saveTransferToLibrary(item) }
             return true
         }
-        .searchable(text: $libraryModel.searchText, prompt: "Name or tag")
+        // Notes are searchable too: "the one I said sounded broken" is
+        // how a preset actually gets found again.
+        .searchable(text: $libraryModel.searchText,
+                    prompt: "Name, tag or note")
         .safeAreaInset(edge: .top, spacing: 0) { facetHeader }
         .toolbar { toolbarContent }
         .alert("Add a tag to \(selectedIDs.count) presets",
@@ -94,6 +97,10 @@ struct LibraryListView: View {
         let statusBySha = model.sync.statusBySha
         let baselineName = model.sync.baseline?.name
         let corrupt = model.libraryModel.corruptEntries
+        // Note counts, like the two dictionaries above, are resolved ONCE per
+        // list body: a row that subscribed to the whole cache itself would be
+        // invalidated by a note taken about any other preset.
+        let noteCounts = model.libraryModel.noteCounts
         return List {
             ForEach(model.libraryModel.filtered(tag: tag)) { entry in
                 LibraryRowView(entry: entry, renamingEntry: $renamingEntry,
@@ -102,6 +109,7 @@ struct LibraryListView: View {
                                    for: entry, statusBySha: statusBySha,
                                    baselineName: baselineName),
                                corruptDetail: corrupt[entry.id],
+                               noteCount: noteCounts[entry.id] ?? 0,
                                selecting: selecting,
                                isSelected: selectedIDs.contains(entry.id),
                                onToggleSelect: { toggleSelect(entry.id) })
@@ -356,6 +364,10 @@ struct LibraryRowView: View {
     /// itself was invalidated by every unrelated library mutation.
     var syncHint: String? = nil
     var corruptDetail: String? = nil
+    /// How many notes this preset carries. Resolved by the owning list from
+    /// `LibraryModel.noteCounts`, which is a cache of the sidecars — a row
+    /// never touches the file system.
+    var noteCount = 0
     /// Edit-mode multi-select (UX addendum §22.4); off by default so
     /// FavoritesListView and others get the plain row.
     var selecting = false
@@ -390,6 +402,7 @@ struct LibraryRowView: View {
                     HStack(spacing: 4) {
                         CategoryBadge(category: entry.category)
                         VerdictBadge(verdict: entry.verdict)
+                        NoteCountBadge(count: noteCount)
                         ForEach(entry.tags, id: \.self) { TagChip(tag: $0) }
                     }
                 }

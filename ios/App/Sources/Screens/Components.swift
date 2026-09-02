@@ -301,25 +301,54 @@ struct VerdictBadge: View {
 }
 
 /// The audition prompt: one big tap per verdict (UX: standing at the synth).
+///
+/// `heard` PRE-AIMS a chip from a spoken note (docs/voice-notes.md §3 rule 2):
+/// the matching chip is outlined and captioned with the literal words that
+/// were heard, and the user still taps. Nothing is filed by speech alone, so a
+/// mishearing costs one glance and no data — which is the only reason it is
+/// safe to point at a chip on the strength of a transcript at all.
 struct VerdictChips: View {
+    var heard: Verdict? = nil
+    /// `heard "keep it"` — the literal span, not the canonical value, so a
+    /// lucky guess is distinguishable from a real hit.
+    var heardCaption: String? = nil
     let onPick: (Verdict) -> Void
 
     var body: some View {
-        HStack(spacing: 12) {
-            ForEach(Verdict.promptOrder, id: \.self) { v in
-                Button {
-                    onPick(v)
-                } label: {
-                    VStack(spacing: 6) {
-                        Image(systemName: v.systemImage).font(.title)
-                        Text(v.displayName).font(.callout.weight(.semibold))
+        VStack(spacing: 8) {
+            HStack(spacing: 12) {
+                ForEach(Verdict.promptOrder, id: \.self) { v in
+                    Button {
+                        onPick(v)
+                    } label: {
+                        VStack(spacing: 6) {
+                            Image(systemName: v.systemImage).font(.title)
+                            Text(v.displayName).font(.callout.weight(.semibold))
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 88)
                     }
-                    .frame(maxWidth: .infinity, minHeight: 88)
+                    .buttonStyle(.bordered)
+                    .tint(v == .keep ? .green : v == .never ? .red : .accentColor)
+                    // Shape, not colour alone: the pre-aimed chip gets a ring
+                    // as well as a tint, so it survives grayscale.
+                    .overlay {
+                        if heard == v {
+                            RoundedRectangle(cornerRadius: 10)
+                                .strokeBorder(Color.accentColor, lineWidth: 2.5)
+                        }
+                    }
+                    .accessibilityHint(heard == v
+                                       ? (heardCaption ?? "suggested by a note")
+                                       : "")
+                    .keyboardShortcut(KeyEquivalent(Character("\(Verdict.promptOrder.firstIndex(of: v)! + 1)")),
+                                      modifiers: [])
                 }
-                .buttonStyle(.bordered)
-                .tint(v == .keep ? .green : v == .never ? .red : .accentColor)
-                .keyboardShortcut(KeyEquivalent(Character("\(Verdict.promptOrder.firstIndex(of: v)! + 1)")),
-                                  modifiers: [])
+            }
+            if let heardCaption, heard != nil {
+                Label(heardCaption, systemImage: "waveform")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel("Suggested from a note: \(heardCaption)")
             }
         }
     }

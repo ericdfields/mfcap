@@ -18,6 +18,12 @@ struct LibraryEntryDetailView: View {
     @State private var exporting = false
     @State private var exportDocument: MFPresetDocument?
     @State private var confirmDelete = false
+    /// Read from the sidecar in `.task`, never in a body pass — notes live in
+    /// their own file (docs/voice-notes.md §0) and a list must not touch disk.
+    @State private var notes: [PresetNote] = []
+    @State private var noteDraft = ""
+    @State private var correcting: PresetNote?
+    @State private var correctionDraft = ""
 
     private var entry: LibraryEntry? { model.libraryModel.entry(id: entryID) }
 
@@ -32,6 +38,11 @@ struct LibraryEntryDetailView: View {
             }
         }
         .navigationTitle(entry?.name ?? "Preset")
+        .task(id: entryID) { await reloadNotes() }
+    }
+
+    private func reloadNotes() async {
+        notes = await model.libraryModel.notes(for: entryID)
     }
 
     private func detail(_ entry: LibraryEntry) -> some View {
@@ -110,6 +121,8 @@ struct LibraryEntryDetailView: View {
                 }
             }
 
+            notesSection(entry)
+
             Section("Provenance") {
                 if let slot = entry.slot {
                     Text("Assigned to device slot \(SlotID(slot).display)")
@@ -187,6 +200,38 @@ struct LibraryEntryDetailView: View {
                  + "name difference never changes sync status; the sync row "
                  + "would show a 'names differ' hint.")
         }
+        // A correction is a SIBLING of the verbatim text, never a replacement:
+        // the original stays so a mishearing is always distinguishable from
+        // something the user actually said (docs/voice-notes.md §3 rule 1).
+        .alert("Correct this note",
+               isPresented: Binding(get: { correcting != nil },
+                                    set: { if !$0 { correcting = nil } })) {
+            TextField("What you meant", text: $correctionDraft)
+            Button("Save") {
+                if let note = correcting {
+                    Task {
+                        await model.libraryModel.correctNote(
+                            note, on: entry.id, to: correctionDraft)
+                        await reloadNotes()
+                    }
+                }
+                correcting = nil
+            }
+            Button("Clear Correction", role: .destructive) {
+                if let note = correcting {
+                    Task {
+                        await model.libraryModel.correctNote(note, on: entry.id,
+                                                             to: nil)
+                        await reloadNotes()
+                    }
+                }
+                correcting = nil
+            }
+            Button("Cancel", role: .cancel) { correcting = nil }
+        } message: {
+            Text("The words that were heard are kept exactly as they were. "
+                 + "Your correction is stored alongside them.")
+        }
         .alert("Delete '\(entry.name)'?", isPresented: $confirmDelete) {
             Button("Delete Entry", role: .destructive) {
                 Task {
@@ -197,6 +242,86 @@ struct LibraryEntryDetailView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text(deleteMessage(entry))
+        }
+    }
+
+    // ---------------------------------------------------------------- notes
+    //
+    // What was said (or typed) about this preset, verbatim. Two rules are
+    // visible here and both are deliberate:
+    //
+    //   The transcript is NEVER edited. "Correct…" writes a SIBLING field and
+    //   leaves the original in place, which is the only way the user can tell
+    //   a mishearing from something they actually said.
+    //
+    //   Nothing in this section is consulted to decide the entry's verdict,
+    //   category or tags. Those live in the sections above; this one is
+    //   provenance. Delete every note and the library is exactly as correct.
+
+    @ViewBuilder
+    private func notesSection(_ entry: LibraryEntry) -> some View {
+        Section("Notes") {
+            // A note write that fails has to say so HERE: the audition cover
+            // is the only other surface that renders a note failure, and it is
+            // long gone by the time anyone edits a note from the library.
+            if let failure = model.libraryModel.noteFailure
+                ?? model.voiceNotes.failure {
+                Label(failure, systemImage: "exclamationmark.triangle")
+                    .font(.footnote)
+                    .foregroundStyle(.orange)
+            }
+            ForEach(notes) { note in
+                VStack(alignment: .leading, spacing: 6) {
+                    NoteRowView(note: note)
+                    HStack(spacing: 16) {
+                        Button {
+                            correctionDraft = note.textCorrected ?? note.text
+                            correcting = note
+                        } label: {
+                            Label("Correct…", systemImage: "pencil")
+                                .font(.caption)
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.secondary)
+                        Button(role: .destructive) {
+                            Task {
+                                await model.libraryModel.deleteNote(note,
+                                                                    on: entry.id)
+                                await reloadNotes()
+                            }
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                                .font(.caption)
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            if notes.isEmpty {
+                Text("No notes yet. Turn on voice notes in the audition setup "
+                     + "to talk while you play, or type one here.")
+                    .font(.footnote).foregroundStyle(.secondary)
+            }
+            HStack(spacing: 6) {
+                TextField("Add a note", text: $noteDraft, axis: .vertical)
+                    .textFieldStyle(.roundedBorder)
+                    .lineLimit(1...4)
+                Button("Add") { addTypedNote(entry) }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(noteDraft.trimmingCharacters(in: .whitespaces)
+                        .isEmpty)
+            }
+        }
+    }
+
+    private func addTypedNote(_ entry: LibraryEntry) {
+        let text = noteDraft
+        noteDraft = ""
+        Task { @MainActor in
+            await model.voiceNotes.addTypedNote(text, to: entry.id, app: model)
+            await reloadNotes()
         }
     }
 

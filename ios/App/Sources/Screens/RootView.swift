@@ -19,6 +19,7 @@ import SwiftUI
 struct RootView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.scenePhase) private var scenePhase
     @SceneStorage("sidebarSelection") private var storedSidebar = "device"
 
     var body: some View {
@@ -87,6 +88,19 @@ struct RootView: View {
         .sheet(item: $model.collectionApplyRequest) { plan in
             CollectionApplyPlanSheet(plan: plan)
         }
+        // The end-of-session note review, presented HERE rather than on the
+        // audition cover: Stop dismisses that cover, and a sheet on a view
+        // that is going away goes away with it.
+        //
+        // Gated on the cover NOT being on screen. A sheet asked for from
+        // underneath a fullScreenCover is a presentation conflict — the
+        // session screen owns that moment and presents its own copy — so this
+        // one waits until the cover has gone.
+        .sheet(item: Binding(
+            get: { model.audition.coverVisible ? nil : model.voiceNotes.review },
+            set: { model.voiceNotes.review = $0 })) { request in
+            NoteReviewSheet(request: request)
+        }
         // ------------------------------- §9 confirmations (dialog + sheet)
         .sheet(item: planSheetConfirmation) { pending in
             SendPlanSheet(pending: pending)
@@ -104,6 +118,16 @@ struct RootView: View {
             let selection = Self.sidebar(from: storedSidebar)
             model.sidebar = selection
             setFavoritesOnly(selection == .favorites)
+        }
+        // The audition holds the screen awake and (when armed) the microphone.
+        // Leaving the foreground gives both back — there is no background-audio
+        // entitlement, and an idle timer left disabled outlives the session.
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                model.audition.sceneBecameActive()
+            } else {
+                model.audition.sceneBecameInactive()
+            }
         }
         .onChange(of: model.sidebar) { _, selection in
             storedSidebar = Self.store(selection)

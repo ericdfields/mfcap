@@ -296,6 +296,25 @@ final class AuditionRequestTests: XCTestCase {
         XCTAssertEqual(request.unresolvedCount, 2)
     }
 
+    /// Random order reorders the chosen queue and nothing else: same presets,
+    /// none repeated, none dropped. (The shuffle itself lives in
+    /// AuditionModel.start, applied once — this pins the contract the UI
+    /// depends on: the count stays honest and every preset is played once.)
+    func testRandomOrderPermutesWithoutAddingOrLosingPresets() {
+        let candidates = (0..<40).map { entry("p\($0)", verdict: .unrated) }
+        let shuffled = candidates.shuffled()
+        XCTAssertEqual(shuffled.count, candidates.count)
+        XCTAssertEqual(Set(shuffled.map(\.id)), Set(candidates.map(\.id)))
+        XCTAssertEqual(Set(shuffled.map(\.id)).count, candidates.count,
+                       "no preset may appear twice")
+        // Two independent shuffles of 40 items landing in identical order is
+        // ~1/40! — a real shuffle, not a no-op.
+        let again = candidates.shuffled()
+        XCTAssertFalse(shuffled.map(\.id) == candidates.map(\.id)
+                       && again.map(\.id) == candidates.map(\.id),
+                       "shuffled() returned the input order twice running")
+    }
+
     // ------------------------------------------- the collection-scoped queue
 
     private func freshModel() -> AppModel {

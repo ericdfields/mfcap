@@ -13,6 +13,9 @@ import FreakCore
 
 struct AuditionSessionView: View {
     @Environment(AppModel.self) private var model
+    /// The end-of-session review, presented HERE while the cover is still up
+    /// (RootView's copy of the sheet cannot show through a fullScreenCover).
+    @State private var reviewing = false
 
     var body: some View {
         VStack(spacing: 28) {
@@ -28,6 +31,19 @@ struct AuditionSessionView: View {
         // model assuming a presentation always succeeds.
         .onAppear { model.audition.coverAppeared() }
         .onDisappear { model.audition.coverDisappeared() }
+        .onChange(of: model.audition.phase) { _, phase in
+            // Queue done, cover still up: the catch-all review opens here,
+            // before Stop tears the screen down.
+            guard phase == .exhausted, model.voiceNotes.hasCapturedNotes
+            else { return }
+            model.voiceNotes.requestReview()
+            reviewing = true
+        }
+        .sheet(isPresented: $reviewing) {
+            if let request = model.voiceNotes.review {
+                NoteReviewSheet(request: request)
+            }
+        }
     }
 
     // ------------------------------------------------------------- header
@@ -43,8 +59,34 @@ struct AuditionSessionView: View {
             Text(model.audition.sourceLabel)
                 .font(.footnote).foregroundStyle(.secondary)
                 .lineLimit(1)
-            Text("Borrowing slot \(slotDisplay)")
-                .font(.caption2).foregroundStyle(.secondary)
+            HStack(spacing: 10) {
+                Text("Borrowing slot \(slotDisplay)")
+                    .font(.caption2).foregroundStyle(.secondary)
+                // The app's OWN live-microphone indication (App Review
+                // 2.5.14), and the mute control, in one place the user can
+                // reach without looking away from the synth.
+                //
+                // Gated on isCapturing, not isListening: a session whose
+                // capture is suspended (an interface took the input, an
+                // interruption, a tap that could not be rebuilt) is still
+                // armed but is hearing nothing, and a pulsing "Listening" over
+                // a dead microphone is the one thing this indicator must never
+                // do. The suspension line below takes its place.
+                if model.voiceNotes.isCapturing {
+                    ListeningPill(isListening: true,
+                                  isMuted: model.voiceNotes.isMuted) {
+                        model.voiceNotes.toggleMuted()
+                    }
+                }
+            }
+            if let reason = model.voiceNotes.suspendedReason {
+                Label(reason, systemImage: "mic.slash")
+                    .font(.caption2).foregroundStyle(.secondary)
+            }
+            if let failure = model.voiceNotes.failure {
+                Label(failure, systemImage: "exclamationmark.triangle")
+                    .font(.caption2).foregroundStyle(.secondary)
+            }
         }
     }
 
@@ -69,17 +111,25 @@ struct AuditionSessionView: View {
                     Text(entry.name)
                         .font(.system(size: 44, weight: .bold, design: .rounded))
                         .multilineTextAlignment(.center)
+                    // Directly under the name, deliberately: a misattributed
+                    // sentence is visible within a second of being said, which
+                    // is what makes the one-tap repair below worth having.
+                    liveTranscript(for: entry)
                     Text(origin(of: entry))
                         .font(.title3).foregroundStyle(.secondary)
                     HStack(spacing: 8) {
                         CategoryBadge(category: entry.category)
                         ForEach(entry.tags, id: \.self) { TagChip(tag: $0) }
                     }
+                    ghostedProposals(for: entry)
                 }
                 Text("Play it. Then file it.")
                     .font(.callout).foregroundStyle(.secondary)
-                VerdictChips { model.audition.pick($0) }
-                    .padding(.horizontal)
+                VerdictChips(heard: model.voiceNotes.heardVerdictValue,
+                             heardCaption: model.voiceNotes.heardVerdictCaption) {
+                    model.audition.pick($0)
+                }
+                .padding(.horizontal)
             }
         case .exhausted:
             ContentUnavailableView {
@@ -87,6 +137,14 @@ struct AuditionSessionView: View {
             } description: {
                 Text("\(model.audition.judged) verdicts filed. Stop to put the "
                      + "slot back the way it was.")
+            } actions: {
+                if model.voiceNotes.hasCapturedNotes {
+                    Button("Review Notes") {
+                        model.voiceNotes.requestReview()
+                        reviewing = true
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
             }
         case .failed(let why):
             ContentUnavailableView {
@@ -104,6 +162,80 @@ struct AuditionSessionView: View {
             }
         case .idle:
             EmptyView()
+        }
+    }
+
+    // ------------------------------------------------------- voice notes
+
+    /// The transcript for the preset on screen, plus the one-tap repair for a
+    /// sentence that landed on the wrong preset.
+    @ViewBuilder
+    private func liveTranscript(for entry: LibraryEntry) -> some View {
+        let voice = model.voiceNotes
+        if voice.isListening || !(voice.captured[entry.id] ?? []).isEmpty {
+            VStack(spacing: 4) {
+                Text(voice.liveTranscript.isEmpty
+                     ? (voice.isCapturing
+                        ? "Listening — say what you think."
+                        : "Not listening right now.")
+                     : voice.liveTranscript)
+                    .font(.callout)
+                    .italic(voice.liveTranscript.isEmpty)
+                    .foregroundStyle(voice.liveTranscript.isEmpty
+                                     ? .secondary : .primary)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(3)
+                    .frame(maxWidth: 640)
+                    .accessibilityLabel(voice.liveTranscript.isEmpty
+                                        ? "No speech heard yet"
+                                        : "Heard: \(voice.liveTranscript)")
+                if let last = voice.captured[entry.id]?.last,
+                   voice.previousEntryID(before: entry.id) != nil {
+                    Button {
+                        Task {
+                            await voice.moveToPreviousPreset(note: last,
+                                                             from: entry.id)
+                        }
+                    } label: {
+                        Label("That was about the previous preset",
+                              systemImage: "arrow.uturn.backward")
+                            .font(.caption)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    /// Ghosted Type and Characteristic chips — proposals, drawn as things that
+    /// are not true yet. A tap promotes each one through the existing setter;
+    /// nothing here changes the entry on its own.
+    @ViewBuilder
+    private func ghostedProposals(for entry: LibraryEntry) -> some View {
+        let voice = model.voiceNotes
+        let category = voice.ghostedCategory(for: entry)
+        let tags = voice.ghostedTags(for: entry)
+        if category != nil || !tags.isEmpty {
+            HStack(spacing: 8) {
+                if let category {
+                    // The caption is the provenance: it appears only when the
+                    // words heard were NOT the chip's own label, which is
+                    // exactly when the user would otherwise have no way to
+                    // tell where the suggestion came from.
+                    GhostChip(title: category.displayName,
+                              caption: voice.ghostedCategoryCaption(category)) {
+                        Task { await voice.acceptCategory(category,
+                                                          for: entry.id) }
+                    }
+                }
+                ForEach(tags, id: \.self) { tag in
+                    GhostChip(title: tag,
+                              caption: voice.ghostedTagCaption(tag)) {
+                        Task { await voice.acceptTag(tag, for: entry.id) }
+                    }
+                }
+            }
         }
     }
 

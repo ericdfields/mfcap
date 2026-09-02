@@ -128,6 +128,19 @@ final class AppModel {
     let operations = DeviceOperationQueue()
     let toasts = ToastCenter()
     let audition = AuditionModel()
+    /// Spoken notes taken DURING an audition (docs/voice-notes.md). Opt-in,
+    /// default off, and inert until an audition arms it: constructing it
+    /// touches no microphone and no audio session.
+    ///
+    /// On the SIMULATOR and in #Previews it is built over `ScriptedTranscriber`
+    /// — the same substitution `SimulatedMicroFreak` makes for a synth that is
+    /// not attached. `SpeechTranscriber` is hardware-gated and
+    /// `isAvailable` is false in the Simulator, so without this every voice
+    /// surface (the toggle, the readiness rows, the live transcript, the
+    /// listening pill, the ghosted chips) collapsed to one dead-end line and
+    /// could not be seen, laid out or reviewed anywhere. The panel says the
+    /// speech is scripted so nothing here can be mistaken for a real capture.
+    let voiceNotes: VoiceNoteModel
     let undoStack = UndoStack()
     let freshness = FreshnessModel()
     let slots = SlotBrowserModel()
@@ -213,8 +226,21 @@ final class AppModel {
         }
     }
 
-    init(paths: AppPaths = .documents(), seedFromBundle: Bool = true) {
+    /// `ScriptedTranscriber` where the real one cannot exist, nil on device.
+    @MainActor
+    static func defaultVoiceTranscriber() -> (any VoiceNoteTranscribing)? {
+        #if targetEnvironment(simulator)
+        return ScriptedTranscriber()
+        #else
+        return nil
+        #endif
+    }
+
+    init(paths: AppPaths = .documents(), seedFromBundle: Bool = true,
+         voiceTranscriber: (any VoiceNoteTranscribing)? =
+            AppModel.defaultVoiceTranscriber()) {
         self.paths = paths
+        self.voiceNotes = VoiceNoteModel(transcriber: voiceTranscriber)
         self.fastPracticeTiming = UserDefaults.standard
             .bool(forKey: "MFFastPracticeTiming")
         self.history = SlotHistoryStore(url: paths.historyURL)

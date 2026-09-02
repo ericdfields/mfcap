@@ -1,0 +1,422 @@
+[
+  {
+    "id": "canonical_dark_pad_keep",
+    "transcript": "nice dark pad, bit too noisy, keep",
+    "expected": {"verdict": "keep", "category": "pad", "tags": ["Dark", "Noise"]},
+    "why": "The reference case. Proves 'bit' and 'too' are intensity qualifiers, NOT hedges - if they were, Noise would be suppressed."
+  },
+  {
+    "id": "positional_keep_mid_sentence_rejected",
+    "transcript": "I would keep the filter setting but cut the noise",
+    "expected": {"verdict": null, "category": null, "tags": []},
+    "why": "Three independent defences all reject the verdict: 'keep the' is a carrier, 'would' is a hedge, and 'keep' is outside the trailing 6 tokens. 'cut the' shadows 'noise' so no Noise tag either - it is a request, not a description."
+  },
+  {
+    "id": "negation_not_dark_never_inverts",
+    "transcript": "not dark",
+    "expected": {"verdict": null, "category": null, "tags": []},
+    "why": "Suppress only, never invert. 'not dark' yields nothing and must NOT yield Bright. There is no antonym table in this design."
+  },
+  {
+    "id": "carrier_hard_to_tell",
+    "transcript": "hard to tell",
+    "expected": {"verdict": null, "category": null, "tags": []},
+    "why": "Carrier 'hard to' consumes its tokens and shadows 'tell'. No Hard."
+  },
+  {
+    "id": "carrier_short_of_ideas",
+    "transcript": "short of ideas on this one",
+    "expected": {"verdict": null, "category": null, "tags": []},
+    "why": "Carrier 'short of' consumes and shadows 'ideas'. No Short."
+  },
+  {
+    "id": "carrier_long_time_coming",
+    "transcript": "long time coming",
+    "expected": {"verdict": null, "category": null, "tags": []},
+    "why": "Carrier 'long time' consumes and shadows 'coming'. No Long."
+  },
+  {
+    "id": "carrier_keep_it_in_mind",
+    "transcript": "keep it in mind",
+    "expected": {"verdict": null, "category": null, "tags": []},
+    "why": "The 3-token carrier 'keep it in' is checked before the lexicons and beats the 2-token verdict synonym 'keep it'. Carriers first, longest first."
+  },
+  {
+    "id": "carrier_hard_time",
+    "transcript": "having a hard time with this one",
+    "expected": {"verdict": null, "category": null, "tags": []},
+    "why": "Carrier 'hard time'. No Hard."
+  },
+  {
+    "id": "carrier_as_long_as",
+    "transcript": "as long as it holds up",
+    "expected": {"verdict": null, "category": null, "tags": []},
+    "why": "3-token carrier 'as long as' beats the 1-token Long key at the same position."
+  },
+  {
+    "id": "carrier_simple_as_that",
+    "transcript": "simple as that",
+    "expected": {"verdict": null, "category": null, "tags": []},
+    "why": "Carrier 'simple as' consumes and shadows 'that'. No Simple."
+  },
+  {
+    "id": "carrier_quiet_down",
+    "transcript": "it does not quiet down at all",
+    "expected": {"verdict": null, "category": null, "tags": []},
+    "why": "Carrier 'quiet down', reinforced by the negator 'not'. No Quiet."
+  },
+  {
+    "id": "carrier_cut_the_noise",
+    "transcript": "cut the noise please",
+    "expected": {"verdict": null, "category": null, "tags": []},
+    "why": "The carrier shadow rule: 'cut the' consumes two tokens AND blocks the next one, so 'noise' cannot start a match. A request to reduce noise is not a Noise tag."
+  },
+  {
+    "id": "carrier_high_pass_filter",
+    "transcript": "the high pass filter is doing a lot here",
+    "expected": {"verdict": null, "category": null, "tags": []},
+    "why": "'pass' is a meh synonym and would be a disaster in synth vocabulary without the 'high pass' carrier."
+  },
+  {
+    "id": "carrier_never_mind",
+    "transcript": "never mind that one",
+    "expected": {"verdict": null, "category": null, "tags": []},
+    "why": "Carrier 'never mind' beats the verdict 'never'."
+  },
+  {
+    "id": "carrier_key_of",
+    "transcript": "playing it in the key of C",
+    "expected": {"verdict": null, "category": null, "tags": []},
+    "why": "Carriers 'the key' / 'key of' protect the keys Type. Bare 'key' is not in the lexicon either."
+  },
+  {
+    "id": "bare_keep",
+    "transcript": "keep",
+    "expected": {"verdict": "keep", "category": null, "tags": []},
+    "why": "A one-token utterance. Accepted by the trailing-6 clause at utterance scope; it is the <=4-token clause that carries it at segment scope."
+  },
+  {
+    "id": "bare_meh",
+    "transcript": "meh",
+    "expected": {"verdict": "meh", "category": null, "tags": []},
+    "why": "Bare verdict, second canonical value."
+  },
+  {
+    "id": "short_utterance_verdict_never",
+    "transcript": "never again",
+    "expected": {"verdict": "never", "category": null, "tags": []},
+    "why": "A two-token utterance with an empty preceding window. The 2-token key beats the 1-token one at the same position."
+  },
+  {
+    "id": "empty_transcript",
+    "transcript": "",
+    "expected": {"verdict": null, "category": null, "tags": []},
+    "why": "Zero tokens. Must not crash, must return the empty proposal set."
+  },
+  {
+    "id": "whitespace_only_transcript",
+    "transcript": "   ",
+    "expected": {"verdict": null, "category": null, "tags": []},
+    "why": "Whitespace normalizes to zero tokens."
+  },
+  {
+    "id": "one_word_non_lexical",
+    "transcript": "hmm",
+    "expected": {"verdict": null, "category": null, "tags": []},
+    "why": "A single non-lexicon token yields nothing."
+  },
+  {
+    "id": "one_word_tag_extractor_still_fires",
+    "transcript": "dark",
+    "expected": {"verdict": null, "category": null, "tags": ["Dark"]},
+    "why": "Proves the empty-note gate (fewer than two alphabetic tokens) belongs to the CALLER, not to extract(). This note would never be persisted, but extraction is still correct."
+  },
+  {
+    "id": "hedge_inside_window",
+    "transcript": "maybe too bright",
+    "expected": {"verdict": null, "category": null, "tags": []},
+    "why": "'maybe' is two tokens before 'bright' - inside the 3-token window. Suppressed."
+  },
+  {
+    "id": "hedge_outside_window",
+    "transcript": "maybe a bit too bright",
+    "expected": {"verdict": null, "category": null, "tags": ["Bright"]},
+    "why": "The other side of the same boundary: 'maybe' is FOUR tokens back, outside the window, so Bright survives. These two cases pin the window at exactly 3."
+  },
+  {
+    "id": "hedge_would_be_nice_if",
+    "transcript": "would be nice if it were brighter",
+    "expected": {"verdict": null, "category": null, "tags": []},
+    "why": "'if' at i-3 suppresses 'brighter'. A wish about a preset is not a description of it."
+  },
+  {
+    "id": "contraction_dont_keep_it",
+    "transcript": "don't keep it",
+    "expected": {"verdict": null, "category": null, "tags": []},
+    "why": "Contraction expansion makes 'do not keep it', and the negator 'not' at i-1 suppresses the verdict. Without expansion this would file the preset as keep - the exact opposite of what was said."
+  },
+  {
+    "id": "contraction_its_not_noisy",
+    "transcript": "it's not noisy at all",
+    "expected": {"verdict": null, "category": null, "tags": []},
+    "why": "Contraction expansion plus the negator window."
+  },
+  {
+    "id": "negation_no_never",
+    "transcript": "no, never",
+    "expected": {"verdict": null, "category": null, "tags": []},
+    "why": "The negator window is applied uniformly, including to verdicts: 'no' at i-1 suppresses 'never'. Documented so the pedantic case is not a surprise."
+  },
+  {
+    "id": "never_as_negator_and_verdict",
+    "transcript": "I will never keep this",
+    "expected": {"verdict": "never", "category": null, "tags": []},
+    "why": "'never' is deliberately in BOTH the negator set and the Verdict lexicon: it matches as the verdict AND suppresses the following 'keep this' one token later. Last-wins therefore settles on never, which is the correct reading."
+  },
+  {
+    "id": "never_verdict_clean",
+    "transcript": "harsh digital mess, never",
+    "expected": {"verdict": "never", "category": null, "tags": ["Hard", "Digital"]},
+    "why": "Verdict never in the trailing-6 window with no blocker in front of it. Tags in first-appearance order."
+  },
+  {
+    "id": "trailing_window_boundary_reject",
+    "transcript": "keep this preset for the deep bass texture",
+    "expected": {"verdict": null, "category": "bass", "tags": []},
+    "why": "'keep this' starts at token 1 of 8, so the trailing-6 window (tokens 3-8) rejects it. No carrier and no hedge here - the positional rule is doing all the work. The Type still lands."
+  },
+  {
+    "id": "trailing_window_boundary_accept",
+    "transcript": "deep bass texture, keep this preset",
+    "expected": {"verdict": "keep", "category": "bass", "tags": []},
+    "why": "Same words rearranged; 'keep this' now starts inside the trailing 6. Pins the window with its mirror case above."
+  },
+  {
+    "id": "self_correction_last_category_wins",
+    "transcript": "sounds like a bass, actually more of a lead",
+    "expected": {"verdict": null, "category": "lead", "tags": []},
+    "why": "Single-valued proposals are last-wins: a speaker correcting themselves means the second thing."
+  },
+  {
+    "id": "consumption_string_ensemble_is_a_type",
+    "transcript": "warm string ensemble, very soft, keep this one",
+    "expected": {"verdict": "keep", "category": "strings", "tags": ["Soft"]},
+    "why": "Longest-match consumption: 'string ensemble' matches the strings Type and consumes 'ensemble', so the Ensemble characteristic must NOT also fire. 'warm' and 'soft' both map to Soft and dedupe to one tag."
+  },
+  {
+    "id": "dedupe_weird_and_bizarre",
+    "transcript": "weird vocoder thing, really bizarre",
+    "expected": {"verdict": null, "category": "vocoder", "tags": ["Bizarre"]},
+    "why": "Two keys for one canonical value dedupe to a single tag; the span recorded is the first appearance."
+  },
+  {
+    "id": "multi_attribute_cinematic_pad",
+    "transcript": "huge cinematic pad, long release, quite dark, definitely a keeper",
+    "expected": {"verdict": "keep", "category": "pad", "tags": ["Soundtrack", "Long", "Dark"]},
+    "why": "Realistic full sentence. 'long release' is a 2-gram so 'release' is consumed; 'quite' is an intensifier, not a hedge; 'a keeper' lands in the trailing 6."
+  },
+  {
+    "id": "multi_attribute_aggressive_bass",
+    "transcript": "really aggressive bass, way too harsh, never",
+    "expected": {"verdict": "never", "category": "bass", "tags": ["Aggressive", "Hard"]},
+    "why": "Realistic full sentence. 'way' and 'too' are intensifiers, not hedges."
+  },
+  {
+    "id": "multi_attribute_ambient_try_later",
+    "transcript": "lovely ambient pad but not right for this track, come back to it later",
+    "expected": {"verdict": "try_later", "category": "pad", "tags": ["Ambient"]},
+    "why": "A negator ('not') appears mid-sentence but only suppresses candidates that FOLLOW it within 3 tokens, so the earlier Ambient and pad survive. 'come back to' lands in the trailing 6."
+  },
+  {
+    "id": "multi_attribute_acid_lead",
+    "transcript": "acid lead, super funky, this is a keeper",
+    "expected": {"verdict": "keep", "category": "lead", "tags": ["Acid", "Funky"]},
+    "why": "Realistic full sentence with a trailing 'a keeper'."
+  },
+  {
+    "id": "multi_attribute_bright_organ",
+    "transcript": "bright organ, quite quiet in the mix, try it later",
+    "expected": {"verdict": "try_later", "category": "organ", "tags": ["Bright", "Quiet"]},
+    "why": "'quite' and 'quiet' are distinct tokens and must not be confused. 'try it later' is a 3-token verdict key in the trailing 6."
+  },
+  {
+    "id": "multi_attribute_digital_percussion",
+    "transcript": "crunchy digital percussion, short and snappy",
+    "expected": {"verdict": null, "category": "percussion", "tags": ["Digital", "Short"]},
+    "why": "'short' and 'snappy' both map to Short and dedupe. No verdict anywhere in the utterance."
+  },
+  {
+    "id": "multi_attribute_brass_soundtrack",
+    "transcript": "big brass section, very cinematic, long tail",
+    "expected": {"verdict": null, "category": "brass", "tags": ["Soundtrack", "Long"]},
+    "why": "'brass section' and 'long tail' are 2-token keys; longest-match consumption keeps 'section' and 'tail' out of play."
+  },
+  {
+    "id": "multi_attribute_sub_bass_simple",
+    "transcript": "deep sub bass, dark and simple",
+    "expected": {"verdict": null, "category": "bass", "tags": ["Dark", "Simple"]},
+    "why": "'sub bass' is a 2-token Type key. Simple survives because no carrier or blocker precedes it."
+  },
+  {
+    "id": "multi_attribute_sfx_riser",
+    "transcript": "just a riser, useless to me, never again",
+    "expected": {"verdict": "never", "category": "sfx", "tags": []},
+    "why": "Two never candidates ('useless', then 'never again'); last-wins keeps the value the same but pins the span to the later one."
+  },
+  {
+    "id": "multi_attribute_complex_evolving",
+    "transcript": "complex evolving texture with a lot going on",
+    "expected": {"verdict": null, "category": null, "tags": ["Complex"]},
+    "why": "'complex' and 'evolving' dedupe to one Complex. 'texture' is deliberately not a Type key."
+  },
+  {
+    "id": "multi_attribute_meh_arp",
+    "transcript": "generic little arp, nothing special",
+    "expected": {"verdict": "meh", "category": "sequence", "tags": []},
+    "why": "'nothing' is a negator but the window is strictly preceding, so the 'nothing special' match does not suppress itself."
+  },
+  {
+    "id": "multi_attribute_hard_edged_lead",
+    "transcript": "hard edged lead, love it",
+    "expected": {"verdict": "keep", "category": "lead", "tags": ["Hard"]},
+    "why": "'hard edged' is a legitimate 2-token Hard key and must not be caught by the 'hard to' / 'hard time' carriers."
+  },
+  {
+    "id": "template_init_patch",
+    "transcript": "just an init patch, nothing here",
+    "expected": {"verdict": null, "category": "template", "tags": []},
+    "why": "'init patch' is a 2-token Type key. 'nothing here' is not a meh synonym - only 'nothing special' is, and near-misses must not fire."
+  },
+  {
+    "id": "percussion_stab",
+    "transcript": "short stabby percussion hits",
+    "expected": {"verdict": null, "category": "percussion", "tags": ["Short"]},
+    "why": "'short' and 'stabby' dedupe to Short."
+  },
+  {
+    "id": "no_way_delete_it",
+    "transcript": "no way, delete it",
+    "expected": {"verdict": "never", "category": null, "tags": []},
+    "why": "'no way' matches with an empty preceding window; the later 'delete it' is suppressed by the negator 'no' at i-3, so last-wins settles on 'no way'. Same canonical value either way."
+  },
+  {
+    "id": "eight_bit_digital",
+    "transcript": "8 bit chiptune lead, quite funky",
+    "expected": {"verdict": null, "category": "lead", "tags": ["Digital", "Funky"]},
+    "why": "Digits survive normalization: '8 bit' is a 2-token Digital key, deduped with 'chiptune'."
+  },
+  {
+    "id": "acid_303",
+    "transcript": "classic 303 bassline, squelchy as anything",
+    "expected": {"verdict": null, "category": "bass", "tags": ["Acid"]},
+    "why": "'303' and 'squelchy' both map to Acid and dedupe."
+  },
+  {
+    "id": "punctuation_and_case_are_normalized",
+    "transcript": "DARK. Pad!! Keep.",
+    "expected": {"verdict": "keep", "category": "pad", "tags": ["Dark"]},
+    "why": "Lowercasing and punctuation stripping happen before matching; the stored text stays verbatim regardless."
+  },
+  {
+    "id": "no_verdict_from_description_only",
+    "transcript": "smooth mellow keys with a soft attack",
+    "expected": {"verdict": null, "category": "keys", "tags": ["Soft"]},
+    "why": "'smooth', 'mellow' and 'soft' all map to Soft and collapse to one tag. A purely descriptive utterance proposes no verdict."
+  },
+  {
+    "id": "ensemble_characteristic_standalone",
+    "transcript": "wide unison pad, very lush",
+    "expected": {"verdict": null, "category": "pad", "tags": ["Ensemble"]},
+    "why": "Ensemble fires as a characteristic when it is not consumed by the 'string ensemble' Type key. 'lush' is deliberately not in any lexicon."
+  },
+  {
+    "id": "noise_and_bizarre_sfx",
+    "transcript": "hissy alien sound design, pretty bizarre",
+    "expected": {"verdict": null, "category": "sfx", "tags": ["Noise", "Bizarre"]},
+    "why": "'sound design' is a 2-token sfx key; 'alien' and 'bizarre' dedupe to Bizarre; 'pretty' is an intensifier, not a hedge."
+  },
+  {
+    "id": "want_is_a_hedge",
+    "transcript": "I want it darker",
+    "expected": {"verdict": null, "category": null, "tags": []},
+    "why": "'want' is a hedge: a request for more darkness is not an assertion that the preset is Dark."
+  },
+  {
+    "id": "reduce_is_a_negator",
+    "transcript": "reduce the hiss a bit",
+    "expected": {"verdict": null, "category": null, "tags": []},
+    "why": "'reduce' is a negator, suppressing Noise two tokens later. Requests to change a preset are not descriptions of it."
+  },
+  {
+    "id": "carrier_rid_of_the_noise",
+    "transcript": "get rid of the noise floor",
+    "expected": {"verdict": null, "category": null, "tags": []},
+    "why": "'get rid' is deliberately NOT a never synonym, and the 'rid of the' carrier shadows 'noise'. Removing noise from a preset is not rejecting the preset."
+  },
+  {
+    "id": "shadow_is_exactly_one_token",
+    "transcript": "turn down the brightness on it",
+    "expected": {"verdict": null, "category": null, "tags": ["Bright"]},
+    "why": "Pins the shadow width at exactly ONE token. 'turn down' consumes two and shadows 'the', but 'brightness' is two tokens past the carrier and survives. A known, accepted limit: widening the shadow would swallow real descriptions, so the answer is a longer carrier when a specific phrase proves noisy, never a wider shadow."
+  },
+  {
+    "id": "consumed_tokens_do_not_rematch",
+    "transcript": "long release, short release",
+    "expected": {"verdict": null, "category": null, "tags": ["Long", "Short"]},
+    "why": "Both 'release' tokens are consumed by their 2-token keys, so neither can start another match. First-appearance order is Long then Short."
+  },
+  {
+    "id": "verdict_last_wins_within_utterance",
+    "transcript": "this is meh, actually keep it",
+    "expected": {"verdict": "keep", "category": null, "tags": []},
+    "why": "Two verdict candidates in one utterance; last-wins takes 'keep it'. A speaker correcting themselves means the second thing."
+  },
+  {
+    "id": "suppressed_candidate_does_not_win_last",
+    "transcript": "honestly this is meh, actually no, keep it",
+    "expected": {"verdict": "meh", "category": null, "tags": []},
+    "why": "Last-wins operates only over candidates that SURVIVED suppression. 'keep it' is killed by the negator 'no' at i-1, so the earlier 'meh' stands. Order of operations: suppress first, then last-wins."
+  },
+  {
+    "id": "locale_and_casing_of_tag_values",
+    "transcript": "SOUNDTRACK strings, very EPIC",
+    "expected": {"verdict": null, "category": "strings", "tags": ["Soundtrack"]},
+    "why": "Matching is case-insensitive but the emitted value is always the exact Arturia display string 'Soundtrack', never the user's casing."
+  },
+  {
+    "id": "verdict_slug_is_try_later_not_display",
+    "transcript": "decent pad, revisit",
+    "expected": {"verdict": "try_later", "category": "pad", "tags": []},
+    "why": "The emitted verdict is the wire slug 'try_later', never the display name 'Try later'."
+  },
+  {
+    "id": "no_proposal_from_pure_filler",
+    "transcript": "okay so anyway that one there",
+    "expected": {"verdict": null, "category": null, "tags": []},
+    "why": "A well-formed sentence with nothing in any lexicon must produce nothing rather than reaching for the nearest match."
+  },
+  {
+    "id": "carrier_chain_cut_the_high_pass",
+    "transcript": "cut the high pass on this one",
+    "expected": {"verdict": null, "category": null, "tags": []},
+    "why": "CARRIERS CHAIN. 'cut the' consumes its tokens and shadows 'high'; the shadow forbids a LEXICON match there but must NOT forbid the 'high pass' carrier, or 'pass' is left bare and read as the 'meh' verdict. A request to cut the high-pass filter must never pre-aim a verdict chip."
+  },
+  {
+    "id": "carrier_chain_lose_the_low_pass",
+    "transcript": "lose the low pass resonance",
+    "expected": {"verdict": null, "category": null, "tags": []},
+    "why": "Same chain with a different pair: 'lose the' shadows 'low', 'low pass' must still fire. Without carrier chaining this reads as the 'meh' verdict."
+  },
+  {
+    "id": "carrier_chain_turn_down_the_band_pass",
+    "transcript": "turn down the band pass a touch",
+    "expected": {"verdict": null, "category": null, "tags": []},
+    "why": "'turn down' shadows 'the'; 'the' starts no carrier and no lexicon key, so the scan reaches 'band pass' unshadowed anyway — the case is here to pin that chaining did not break the ordinary path."
+  },
+  {
+    "id": "shadow_still_blocks_a_lexicon_key",
+    "transcript": "hard to tell but keep it",
+    "expected": {"verdict": "keep", "category": null, "tags": []},
+    "why": "Chaining must not weaken the shadow itself: 'hard to' still shadows 'tell', and no Hard tag is emitted. The trailing 'keep it' is inside the last six tokens and is still a verdict."
+  }
+]

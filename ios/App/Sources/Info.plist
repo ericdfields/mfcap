@@ -34,6 +34,10 @@
 	</array>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Freak Librarian uses the local network to discover Network MIDI (RTP-MIDI) sessions that can reach your MicroFreak.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Freak Librarian listens while you audition a preset so it can write down what you say about it. Your words are transcribed on this iPad and attached to that preset. No audio is recorded or saved, and your speech is never sent anywhere to be recognized.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Freak Librarian listens while you audition a preset so it can write down what you say about it. Your words are transcribed on this iPad and attached to that preset. No audio is recorded or saved, and your speech is never sent anywhere to be recognized.</string>
 	<key>UIFileSharingEnabled</key>
 	<true/>
 	<key>UILaunchScreen</key>

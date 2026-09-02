@@ -31,6 +31,7 @@
 
 import Foundation
 import Observation
+import UIKit
 import FreakCore
 
 /// One prepared audition: what would be played, where it came from, and how
@@ -136,10 +137,17 @@ final class AuditionModel {
     /// Start a session over an EXPLICIT queue. The guard is `session == nil`,
     /// not a phase test: a failed session still holds the borrowed slot's
     /// original, and starting over it would discard that original forever.
-    func start(_ app: AppModel, queue: [LibraryEntry], sourceLabel: String) {
+    /// `randomOrder` shuffles the queue ONCE, here — never per advance. A
+    /// re-rolled order would repeat presets, strand others, and make the
+    /// "n of N" counter a lie; shuffling the handed-in queue instead keeps
+    /// every filter the caller applied (a collection, unrated-only, the
+    /// library facets) exactly as chosen and only reorders it.
+    func start(_ app: AppModel, queue: [LibraryEntry], sourceLabel: String,
+               randomOrder: Bool = false) {
         guard session == nil, let device = app.device,
               let library = app.libraryModel.library else { return }
         guard !queue.isEmpty else { return }
+        let queue = randomOrder ? queue.shuffled() : queue
         // An unsettled loan from an earlier session still owns the record on
         // disk; borrowing again would overwrite the only saved copy of that
         // slot's original.
@@ -157,6 +165,16 @@ final class AuditionModel {
         current = nil
         phase = .starting
         presented = true
+        // The user is standing at the synth with both hands on the keys; the
+        // iPad must not sleep between presets. Cleared in EVERY exit path —
+        // reset(), the failed-start branch below, and a scene phase change —
+        // because an idle timer left disabled outlives the session and quietly
+        // costs the user their battery.
+        setIdleTimer(disabled: true)
+        // Voice notes are armed here or not at all: one analyzer for the whole
+        // session (docs/voice-notes.md §4). It is a no-op unless the user
+        // turned them on and everything they need is installed.
+        app.voiceNotes.beginSession(app: app)
         let raw = slot
         let s = AuditionSession(device: device, library: library,
                                 queue: queue, slot: raw)
@@ -184,6 +202,10 @@ final class AuditionModel {
                 app.slots.setBusy(slotID, false)
                 session = nil
                 borrowedSlot = nil
+                // Nothing was borrowed and nothing is running: give the screen
+                // and the microphone back before reporting the failure.
+                setIdleTimer(disabled: false)
+                Task { await app.voiceNotes.endSession() }
                 fail(error)
             }
         }
@@ -191,6 +213,10 @@ final class AuditionModel {
 
     /// File the verdict for the preset on the synth, then load the next one.
     func pick(_ verdict: Verdict) {
+        // FIRST statement: this is the instant of the tap, and the deferred
+        // boundary rule needs that instant — not the one after a verified
+        // device write has loaded the next preset a second later.
+        app?.voiceNotes.closeCurrent()
         guard phase == .playing, let s = session, let app else { return }
         phase = .loading
         Task {
@@ -207,6 +233,9 @@ final class AuditionModel {
 
     /// Move on without judging.
     func skip() {
+        // Same reason as `pick`: the tap time is what the boundary is placed
+        // at, so it is taken before anything else can run.
+        app?.voiceNotes.closeCurrent()
         guard phase == .playing else { return }
         phase = .loading
         Task { await advance() }
@@ -216,7 +245,17 @@ final class AuditionModel {
     /// safe to call again after a failure — the session (and its original) is
     /// kept until the write actually succeeds.
     func stop() {
+        // NOTHING is torn down before the guards below. A Stop that is refused
+        // — no device, the wrong device, a restore already in flight — leaves
+        // the session deliberately ALIVE, and closing capture there killed the
+        // microphone for the rest of an audition that carried on, with no
+        // suspendedReason to explain it, and burned the once-per-session
+        // review on the way past. The tap instant is taken as the first thing
+        // that happens once Stop is actually going ahead; there is no await
+        // between here and there.
         guard let s = session, let raw = borrowedSlot, let app else {
+            self.app?.voiceNotes.closeCurrent()
+            endVoiceCapture(review: true)
             reset()
             return
         }
@@ -247,6 +286,11 @@ final class AuditionModel {
         } else {
             fallback = nil
         }
+        // Committed. The last thing said about the last preset is finalized by
+        // the analyzer's drain, so capture is closed BEFORE the restore write
+        // — not after the session object has been thrown away.
+        app.voiceNotes.closeCurrent()
+        endVoiceCapture(review: true)
         let task = app.operations.enqueue("Audition: restoring slot \(slotID.display)",
                                           kind: .quick, slot: slotID) { _ in
             if let fallback {
@@ -291,6 +335,7 @@ final class AuditionModel {
     /// read: the standing promise moves from this session to AppModel's
     /// pending-loan record, which survives a relaunch.
     func abandon() {
+        endVoiceCapture(review: true)
         guard let app, let raw = borrowedSlot else { reset(); return }
         let slotID = SlotID(raw)
         app.slots.setBusy(slotID, false)
@@ -339,6 +384,9 @@ final class AuditionModel {
             guard session === s, !lostDevice else { return }
             if let entry {
                 current = entry
+                // The segment opens where the preset name changes, so the
+                // live transcript and the name on screen always agree.
+                app.voiceNotes.markBoundary(to: entry.id)
                 remaining = await s.remaining
                 phase = .playing
             } else {
@@ -365,6 +413,12 @@ final class AuditionModel {
     }
 
     private func reset() {
+        // Belt and braces: every route into reset() has already ended capture,
+        // but the idle timer is the one piece of global device state this
+        // model owns, and leaving it disabled is invisible until the battery
+        // is flat. It is cleared here unconditionally.
+        endVoiceCapture(review: false)
+        setIdleTimer(disabled: false)
         session = nil
         borrowedSlot = nil
         restoring = false
@@ -377,5 +431,60 @@ final class AuditionModel {
         presented = false
         lostDevice = false
         loanIdentity = .none
+    }
+
+    // ------------------------------------------------- screen + microphone
+    //
+    // Two pieces of global device state the audition borrows for as long as it
+    // runs, and must give back on EVERY exit — success, failure, abandon, and
+    // the app leaving the screen.
+
+    private func setIdleTimer(disabled: Bool) {
+        UIApplication.shared.isIdleTimerDisabled = disabled
+    }
+
+    /// Close voice capture and, when there is anything to show, snapshot the
+    /// end-of-session review. Idempotent: `endSession()` is safe to call over
+    /// an already-stopped session, and `requestReview` does nothing with no
+    /// notes.
+    private func endVoiceCapture(review: Bool) {
+        guard let app else { return }
+        guard app.voiceNotes.isListening || app.voiceNotes.hasCapturedNotes
+        else { return }
+        if review { app.voiceNotes.requestReview() }
+        Task { await app.voiceNotes.endSession() }
+    }
+
+    /// The scene left the foreground. There is no background-audio
+    /// entitlement — deliberately — so the microphone goes back and the screen
+    /// is allowed to sleep. The SESSION survives: the slot is still borrowed,
+    /// the loan record is on disk, and the banner still offers Stop.
+    func sceneBecameInactive() {
+        setIdleTimer(disabled: false)
+        guard let app, app.voiceNotes.isListening else { return }
+        Task { await app.voiceNotes.suspendForBackground() }
+    }
+
+    /// Back on screen with an audition ACTUALLY RUNNING and on screen: take the
+    /// wake lock again. Capture is NOT resumed automatically — the microphone
+    /// reopening without a deliberate act is exactly what the listening
+    /// indicator exists to make impossible.
+    ///
+    /// The predicate is not `session != nil`. That is `needsRestore`, which
+    /// stays true for as long as a loan is outstanding — including after a
+    /// failed restore, which deliberately keeps the session, and after
+    /// Minimize. Keying the wake lock to it put the iPad into never-sleep
+    /// every time the app came forward, with no audition on screen and nothing
+    /// visible to explain it, for as long as the banner sat there. The screen
+    /// is held awake for one reason: the user is standing at the synth with
+    /// both hands on the keys and a preset playing.
+    func sceneBecameActive() {
+        guard session != nil, presented else { return }
+        switch phase {
+        case .starting, .loading, .playing:
+            setIdleTimer(disabled: true)
+        case .idle, .exhausted, .failed:
+            break
+        }
     }
 }

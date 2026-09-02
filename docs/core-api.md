@@ -117,7 +117,13 @@ decision table (see below).
   `ProgressEvent`, `ProgressFn`, `CancelToken`, `NameInfo`
 - `BackupSet`, `Library`, `LibraryEntry`
 - `diff`, `diff_baseline`, `SyncDiff`, `SlotDiff`, `SlotStatus`
-- the `analysis`, `protocol`, `sync` submodules
+- `PresetNote`, `NoteSource`, `NoteProposal`, `NoteProposals`, `NoteDocument`,
+  `canonical_order`, `note_to_json`, `note_from_json`,
+  `note_document_to_json`, `note_document_from_json`, `NOTE_SCHEMA`
+- `extract`, `segment_verdict`, `tokenize`, `NoteToken`,
+  `alphabetic_token_count`, `meets_content_gate`, `CHARACTERISTICS`
+- the `analysis`, `collections`, `notes`, `protocol`, `sync`, `vocab`
+  submodules
 - the constants `SLOTS`, `SLOTS_PER_BANK`, `BLOB_SIZE`, `CHUNK_SIZE`,
   `CHUNK_COUNT`, `META_LEN`, `NAME_LEN`, `DUPLICATE_THRESHOLD`
 - every exception type (see [Errors](#errors))
@@ -386,6 +392,136 @@ preset_back = lib.get(entry.id)        # re-hashed on every read
 
 ---
 
+## Notes (`microfreak.notes`, `microfreak.vocab`)
+
+Per-entry voice/typed notes: what the user said about a preset while
+auditioning it. The full contract is [voice-notes.md](voice-notes.md); this
+section is the Python API surface only. Section numbers below refer to that
+document.
+
+**Honest provenance — this one was written in Swift first.** Everywhere else in
+this repo Python leads and the Swift core is the port. Not here. The feature is
+on-device speech capture, and the microphone only exists on the iPad, so
+`FreakCore`'s `Notes.swift` / `NoteVocabulary.swift` / `NoteExtractor.swift`
+were written first against a pinned design document and this module is the
+**back-port**. Two consequences worth stating rather than papering over:
+
+- The Python API deliberately mirrors the Swift shapes (`NoteProposals` with
+  `verdict` / `category` / `tags`; a `NoteDocument` that knows the schema it was
+  read at) rather than reaching for a more Pythonic arrangement. Parity is the
+  point.
+- `docs/voice-notes.md`, not either implementation, is the arbiter. Both cores
+  load `tests/fixtures/note_extraction.json`; when they disagree, the doc
+  decides which one is wrong.
+
+At the time of writing they do not disagree: all 66 fixture cases produce
+identical values, spans and tier confidences in both cores, and a sidecar
+written by `FreakCore` and one written here parse to the same JSON document
+(pinned as the `SWIFT_GOLDEN` fixture in `tests/test_notes_vocab.py`).
+
+### Why a sidecar (§0)
+
+`_entry_to_json` builds a **fixed** dict and every write path rewrites every
+entry through it. A `note` field on `LibraryEntry` would be silently destroyed
+the first time any Python tooling touched a library the iPad had written — no
+error, no diff, just gone. Notes therefore live in `notes/<entry id>.json`,
+mirroring `collections/<id>.json`: a file whole-index rewrites cannot reach.
+Keyed on `entry.id`, which survives rename and is unique per catalog row.
+
+### Value types (`microfreak.notes`)
+
+- `PresetNote` — `id` (uuid4 hex), `recorded_at` (`"%Y-%m-%dT%H:%M:%S"`, local,
+  same shape as `added_at`), `source` (`NoteSource.VOICE` / `TYPED`), `text`
+  (**verbatim and immutable**), `text_corrected` (a sibling correction or
+  `None`), `locale`, `session_id`, `audio_start`, `audio_end`,
+  `device_identity`, `proposals`.
+  `PresetNote.new(...)` mints the id and timestamp and extracts proposals;
+  `.correcting(s)` attaches a correction without touching `text`;
+  `.recording_acceptance(props)` records what the user confirmed.
+- `audio_start` / `audio_end` are **session-relative seconds — a timeline
+  offset, never a pointer** (§1.5). **No raw audio is ever written to disk**,
+  and no field here may ever hold audio or a path to audio.
+- `NoteProposal` — `value` (closed set), `span_start` / `span_end` (code point
+  offsets into the verbatim `text`), `confidence` (a fixed §2.8 tier: `0.9`
+  exact / `0.8` multi-token synonym / `0.7` single-token synonym — a
+  match-strength tier, never from a model), `accepted`.
+- `NoteProposals` — `verdict`, `category`, `tags` (unique by value, first-
+  appearance order) plus `verdict_value` / `category_value` / `tag_values`,
+  which parse to `Verdict` / `Category` and yield `None` rather than a false
+  `UNRATED` / `UNCATEGORIZED`.
+- `NoteDocument` — `schema` **as read from disk**, `entry_id`, `notes`.
+  `doc.is_read_only` is the §1.2 gate: a sidecar written by a newer core is
+  displayable but must never be rewritten.
+- `canonical_order(notes)` — the §1.3 write order: ascending `recorded_at`,
+  ties by `audio_start`, ties by `id`.
+- `note_to_json` / `note_from_json` / `note_document_to_json` /
+  `note_document_from_json` — the codec. Unparseable input raises
+  `LibraryCorruptError`, the same error the collection reader raises.
+
+### Library store
+
+```python
+lib.notes(entry_id) -> List[PresetNote]          # missing file == zero notes
+lib.note_document(entry_id) -> Optional[NoteDocument]
+lib.append_note(entry_id, note) -> List[PresetNote]
+lib.replace_notes(entry_id, notes) -> List[PresetNote]
+lib.delete_notes(entry_id) -> None
+```
+
+- Reads never raise for a missing file or an unknown entry; a sidecar with no
+  matching entry is ignored and never resurrected.
+- Writes require the entry (`EntryNotFoundError`) and refuse a newer schema
+  (`IntegrityError`). `replace_notes(entry_id, [])` deletes the file rather than
+  leaving an empty document. Every write is atomic and in canonical order.
+- `remove(entry_id)` deletes the entry's sidecar unconditionally — it is keyed
+  on that id, so nothing else can reference it.
+- `dedupe()` **merges** sidecars: the losers' notes are folded into the
+  survivor's file and re-sorted, and the losers' files deleted. Notes merge like
+  tags, not like slots — two rows for the same `(sha256, name)` were always the
+  same preset. If any sidecar in a group carries a newer schema the whole
+  group is left untouched.
+- `merge_bundle()` deliberately does nothing with notes: a seed has never been
+  auditioned, and the merge mints fresh entry ids anyway.
+
+### The extractor (`microfreak.vocab`)
+
+```python
+extract(utterance, locale="en-US") -> NoteProposals
+segment_verdict(utterances, locale="en-US") -> Optional[NoteProposal]
+tokenize(text) -> List[NoteToken]        # normalized token + code point span
+meets_content_gate(text) -> bool         # >= 2 alphabetic tokens (§2.9)
+```
+
+Pure, table-driven, standard library only — no ML, no network, no regex.
+Normalize (NFC, lowercase, contraction expansion, apostrophes deleted,
+non-alphanumeric to space) carrying each token's code point range in the
+original string, then scan left to right: **carriers first** (§2.6, the single
+biggest false-positive control — a hit consumes its tokens and shadows exactly
+one following token), then the three lexicons longest-first with Verdict > Type
+> Characteristic at equal length, then suppression (§2.5's strictly preceding
+3-token negator/hedge window — **suppress only, never invert**; there is no
+antonym table) and §2.7's verdict positional rule. An accepted match consumes
+its tokens.
+
+Canonical values come from closed tables — `Verdict.slug` (never `unrated`),
+`Category.slug` (never `uncategorized`), and the 18 exact Arturia
+characteristic display strings — so the extractor **can never invent a value**.
+A `locale` that does not start with `en` returns empty proposals; the note is
+still stored verbatim.
+
+Everything it emits is **advisory** (§3). The extractor writes into
+`PresetNote.proposals` and nowhere else; a transcript never changes a preset
+attribute on its own. An accepted proposal is written to its canonical home
+through `set_verdict` / `set_category` / `set_tags`, so every filter, census
+and export sees it with no knowledge that a microphone was involved. **No
+reader anywhere may consult `notes/` to determine an entry's verdict, category
+or tags** — delete `notes/` and the library is exactly as correct as before.
+
+Adding a lexicon key is a two-core change plus a fixture case, never a
+unilateral tweak.
+
+---
+
 ## Sync diff (`microfreak.sync`)
 
 ```python
@@ -606,10 +742,21 @@ MicroFreakError
 
 ```
 <root>/
-  index.json          {"schema": 1, "entries": [{"id", "name", "sha256",
-                       "meta_hex", "slot", "added_at", "tags"}]}
-  blobs/<sha256>.bin  content-addressed 4672-byte blobs
+  index.json               {"schema": 1, "entries": [{"id", "name", "sha256",
+                            "meta_hex", "slot", "added_at", "tags",
+                            "category", "favorite", "verdict"}]}
+  blobs/<sha256>.bin       content-addressed 4672-byte blobs
+  collections/<id>.json    {"schema": 1, "id", "name", "created_at",
+                            "provenance", "slots"}
+  notes/<entry id>.json    {"schema": 1, "entry_id", "notes": [...]}
 ```
+
+`index.json` is rewritten in full on every write, through a fixed dict — which
+is why `collections/` and `notes/` are separate files and why nothing that must
+survive a Python write may live on `LibraryEntry` without being added to
+`_entry_to_json` in both cores. The note sidecar is pinned field by field in
+[voice-notes.md](voice-notes.md) §1; both cores honour its `schema` gate and
+never rewrite a file a newer core wrote.
 
 ---
 
@@ -621,6 +768,13 @@ the transport contract, the three request/reply state machines, the
 invariants, and the quirks. The Python is the reference implementation;
 this section is the checklist. Wire ground truth remains
 [write-protocol.md](write-protocol.md).
+
+One documented exception to "the Python is the reference": the note sidecar and
+the note extractor were written in Swift first and back-ported here, because the
+microphone that motivates them only exists on the iPad. For those,
+[voice-notes.md](voice-notes.md) is the arbiter and
+`tests/fixtures/note_extraction.json` is the shared proof — see
+[Notes](#notes-microfreaknotes-microfreakvocab).
 
 ### 1. The transport contract
 

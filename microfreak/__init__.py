@@ -8,7 +8,7 @@ from __future__ import annotations
 
 __version__ = "0.1.0"
 
-from . import analysis, collections, protocol, sync          # noqa: F401
+from . import analysis, collections, notes, protocol, sync, vocab   # noqa: F401
 from .backup import BackupSet                                # noqa: F401
 from .collections import (ApplyOptions, ApplyPlan, BankItem,  # noqa: F401
                           PlanAction, PresetCollection, Provenance,
@@ -27,6 +27,10 @@ from .library import (Library, LibraryEntry, all_tags,       # noqa: F401
 from .model import (CancelToken, Category, DeviceSnapshot,   # noqa: F401
                     Preset, PresetRef, ProgressEvent, ProgressFn, SlotRecord,
                     TimingReport, WriteReport)
+from .notes import (NOTE_SCHEMA, NoteDocument, NoteProposal,  # noqa: F401
+                    NoteProposals, NoteSource, PresetNote, canonical_order,
+                    note_document_from_json, note_document_to_json,
+                    note_from_json, note_to_json)
 from .protocol import (BLOB_SIZE, CHUNK_COUNT, CHUNK_SIZE,   # noqa: F401
                        DUPLICATE_THRESHOLD, META_LEN, NAME_LEN, SLOTS,
                        SLOTS_PER_BANK, NameInfo)
@@ -36,6 +40,9 @@ from .sync import (SlotDiff, SlotStatus, SyncDiff,           # noqa: F401
 from .transport import Transport                             # noqa: F401
 from .model import Verdict                                   # noqa: F401
 from .audition import AuditionSession                        # noqa: F401
+from .vocab import (CHARACTERISTICS, NoteToken,              # noqa: F401
+                    alphabetic_token_count, extract, meets_content_gate,
+                    segment_verdict, tokenize)
 
 
 def open_device(**open_kwargs) -> MicroFreak:

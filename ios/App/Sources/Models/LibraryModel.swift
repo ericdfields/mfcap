@@ -75,6 +75,25 @@ final class LibraryModel {
     /// Is anything favorited at all (the Favorites empty-state test)?
     private(set) var hasAnyFavorite = false
 
+    // ------------------------------------------------------------ note cache
+    //
+    // Notes live in per-entry sidecars (docs/voice-notes.md §0), so counting
+    // them means touching the file system — which a list row must never do.
+    // They are cached here instead: a count per entry for the row glyph, and
+    // the lowercased text per entry so search can match what was SAID about a
+    // preset, not only its name and tags.
+    //
+    // NOTHING here is ever consulted to decide an entry's verdict, category or
+    // tags (§3 rule 3). It is provenance and a search index, nothing else.
+
+    /// Entry id → number of notes. Absent means zero.
+    private(set) var noteCounts: [String: Int] = [:]
+    /// Entry id → every note's text, lowercased and joined, for search.
+    @ObservationIgnored private var noteSearchText: [String: String] = [:]
+    /// The notes directory's modification date at the last read. A library
+    /// with no notes, or one whose notes have not changed, costs one stat.
+    @ObservationIgnored private var notesDirStamp: Date?
+
     // Caches parallel to `entries`. @ObservationIgnored is load-bearing:
     // writing them from recomputeDerived() must not retrigger observation.
     @ObservationIgnored private var sortKeys: [String] = []
@@ -135,8 +154,100 @@ final class LibraryModel {
         guard let library else { return }
         entries = await library.entries()
         rebuildEntryCaches()
+        await refreshNotes()
         recomputeDerived()
         onChange?()
+    }
+
+    /// Re-read the note sidecars, but only when they have actually changed.
+    ///
+    /// `refresh()` runs after every library mutation — every verdict filed in
+    /// an audition, every tag edit — so an unconditional re-read would parse
+    /// every sidecar on a path that has nothing to do with notes. The
+    /// directory's own modification date changes whenever a sidecar is added,
+    /// removed or rewritten (AtomicFile replaces the file), so one `stat` is
+    /// enough to skip the whole pass.
+    func refreshNotes(force: Bool = false) async {
+        guard let library else { return }
+        let dir = library.notesDir()
+        let attributes = try? FileManager.default
+            .attributesOfItem(atPath: dir.path)
+        let stamp = attributes?[.modificationDate] as? Date
+        guard stamp == nil || force || stamp != notesDirStamp else { return }
+        notesDirStamp = stamp
+        guard stamp != nil else {
+            // No notes directory at all: the common case, and the cheapest.
+            if !noteCounts.isEmpty { noteCounts = [:] }
+            noteSearchText = [:]
+            return
+        }
+        let ids = (try? FileManager.default
+            .contentsOfDirectory(atPath: dir.path))?
+            .filter { $0.hasSuffix(".json") }
+            .map { String($0.dropLast(5)) } ?? []
+        var counts: [String: Int] = [:]
+        var text: [String: String] = [:]
+        for id in ids {
+            guard let notes = try? await library.notes(entryID: id),
+                  !notes.isEmpty else { continue }
+            counts[id] = notes.count
+            text[id] = notes
+                .map { ($0.textCorrected ?? $0.text).lowercased() }
+                .joined(separator: " ")
+        }
+        if noteCounts != counts { noteCounts = counts }
+        noteSearchText = text
+    }
+
+    /// The row glyph's number. Zero means no glyph is drawn at all.
+    func noteCount(_ entryID: String) -> Int { noteCounts[entryID] ?? 0 }
+
+    /// Every note on one entry, straight from its sidecar. Reads the file —
+    /// call it from a detail screen's `.task`, never from a list body.
+    func notes(for entryID: String) async -> [PresetNote] {
+        guard let library else { return [] }
+        return (try? await library.notes(entryID: entryID)) ?? []
+    }
+
+    /// Attach a user correction. `text` is never overwritten — the verbatim
+    /// original is what lets the user tell a mishearing from their own slip
+    /// (docs/voice-notes.md §3 rule 1).
+    /// Non-nil while a note edit is being shown to the user. The detail screen
+    /// renders it: a `try?` that swallowed the error left the user looking at
+    /// a correction they had typed and the app had not saved.
+    var noteFailure: String?
+
+    func correctNote(_ note: PresetNote, on entryID: String,
+                     to corrected: String?) async {
+        guard let library else { return }
+        let trimmed = corrected?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let value = (trimmed?.isEmpty ?? true) ? nil : trimmed
+        let noteID = note.id
+        do {
+            // One actor-isolated read-modify-write. Reading and replacing as
+            // two awaits let a note appended in between be overwritten by the
+            // stale list — and a verbatim transcript has no second copy.
+            _ = try await library.mutateNotes(entryID: entryID) { notes in
+                notes.map { $0.id == noteID ? $0.correcting(value) : $0 }
+            }
+            noteFailure = nil
+        } catch {
+            noteFailure = "Couldn't save that correction: "
+                + error.localizedDescription
+        }
+        await refreshNotes(force: true)
+    }
+
+    func deleteNote(_ note: PresetNote, on entryID: String) async {
+        guard let library else { return }
+        do {
+            _ = try await library.removeNote(id: note.id, from: entryID)
+            noteFailure = nil
+        } catch {
+            noteFailure = "Couldn't delete that note: "
+                + error.localizedDescription
+        }
+        await refreshNotes(force: true)
     }
 
     /// Rebuild the caches that depend on `entries` alone — the tag list
@@ -213,8 +324,13 @@ final class LibraryModel {
         if let verdictFilter, entry.verdict != verdictFilter { return false }
         if hasTagFilter, !tagFilter.isSubset(of: Set(entry.tags)) { return false }
         if !query.isEmpty {
+            // Notes count as searchable text: "the one where I said it
+            // sounded like a broken kalimba" is how people actually find a
+            // preset again. Matched against the CORRECTED text when there is
+            // one, the verbatim text otherwise.
             let hit = key.contains(query)
                 || entry.tags.contains { $0.lowercased().contains(query) }
+                || (noteSearchText[entry.id]?.contains(query) ?? false)
             if !hit { return false }
         }
         return true

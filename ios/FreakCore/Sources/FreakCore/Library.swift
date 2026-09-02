@@ -324,14 +324,27 @@ public actor Library {
 
     /// Collapse entries with identical (sha256, name) into one, merging
     /// attributes (union tags, OR favorite, prefer a set category, keep the
-    /// first slot). Safe for collections, which reference presets by sha, not
-    /// by entry id. Returns the number of entries removed.
+    /// first slot) AND merging notes sidecars (the losers' notes are folded
+    /// into the survivor's file, concatenated and re-sorted into the §1.3
+    /// canonical order, and the losers' files are deleted). Safe for
+    /// collections, which reference presets by sha, not by entry id. Returns
+    /// the number of entries removed.
+    ///
+    /// Notes merge like tags, not like slots: an entry's notes are provenance
+    /// for the bytes, and two catalog rows for the same (sha256, name) were
+    /// always the same preset, so dropping the loser's notes would lose the
+    /// only record of what the user said about it. The one refusal is the
+    /// §1.2 schema gate: if ANY sidecar in a group was written by a newer core
+    /// this one cannot read losslessly, the whole group's files are left
+    /// untouched — an unreachable-but-intact sidecar beats a rewritten one.
     @discardableResult
     public func dedupe() throws -> Int {
         var keep: [String: LibraryEntry] = [:]      // "sha\u{0}name" -> entry
         var order: [String] = []
+        var groups: [String: [String]] = [:]        // key -> entry ids, in order
         for e in entriesList {
             let key = e.sha256 + "\u{0}" + e.name
+            groups[key, default: []].append(e.id)
             if let p = keep[key] {
                 keep[key] = p.with(
                     // `.some(...)` is load-bearing: `slot:` is `Int??`, so a
@@ -351,10 +364,32 @@ public actor Library {
         }
         let removed = entriesList.count - order.count
         if removed > 0 {
+            for key in order where (groups[key]?.count ?? 0) > 1 {
+                try mergeNotes(intoSurvivor: keep[key]!.id, from: groups[key]!)
+            }
             entriesList = order.map { keep[$0]! }
             try save()
         }
         return removed
+    }
+
+    /// Fold every collapsed entry's notes into the survivor's sidecar and drop
+    /// the losers' files. `ids` is the whole group in list order; `survivor` is
+    /// the first of them, and the only one that still exists afterwards.
+    private func mergeNotes(intoSurvivor survivor: String, from ids: [String]) throws {
+        var docs: [(id: String, doc: NoteDocument)] = []
+        for id in ids {
+            if let doc = try loadNoteDocument(entryID: id) { docs.append((id, doc)) }
+        }
+        guard !docs.isEmpty else { return }
+        // §1.2: never rewrite a file a newer schema wrote, and never destroy
+        // one either — leave the whole group alone and take the orphan.
+        guard !docs.contains(where: { $0.doc.isReadOnly }) else { return }
+        let merged = docs.flatMap { $0.doc.notes }
+        for (id, _) in docs where id != survivor {
+            try deleteNotes(entryID: id)
+        }
+        try writeNotes(merged, entryID: survivor)     // canonical order applied here
     }
 
     /// One-time repair for libraries built before bank import stopped stamping
@@ -448,7 +483,7 @@ public actor Library {
     }
 
     /// Deletes the entry; the blob file is deleted only when no remaining
-    /// entry references it.
+    /// entry references it, and the entry's notes sidecar goes with it.
     public func remove(id: String) throws {
         let e = try entry(id: id)
         entriesList.removeAll { $0.id == id }
@@ -457,6 +492,10 @@ public actor Library {
         if !(try blobReferenced(e.sha256)) {
             try? FileManager.default.removeItem(at: blobPath(e.sha256))
         }
+        // Notes GC is unconditional and needs no reference check: a sidecar is
+        // keyed on THIS entry's id, so nothing else can be pointing at it
+        // (docs/voice-notes.md §1.1 — deleting an entry deletes its sidecar).
+        try deleteNotes(entryID: id)
         try save()
     }
 
@@ -706,6 +745,17 @@ public actor Library {
     /// content-addressed so shared presets are stored once. Returns the number
     /// of collections newly merged. Used to fold the bundled seed into an
     /// existing user library without disturbing entries the user already has.
+    ///
+    /// Notes need NOTHING here, deliberately. A bundled seed is built by the
+    /// tooling and ships with `collections/` and `blobs/` only — it has no
+    /// `notes/` directory, because a note is a recording of something a user
+    /// said in an audition session and a seed has never been auditioned. And
+    /// the merge is collection-granular: it copies arrangements and blobs, and
+    /// mints its own catalog entries with their own fresh ids, so there is no
+    /// id under which a foreign sidecar could even be addressed. If a future
+    /// bundle ever did carry notes, this method would have to grow an explicit
+    /// entry-id remapping; silently importing them is not a thing that can
+    /// happen by accident. (NotesTests pins this.)
     @discardableResult
     public func mergeBundle(from other: Library) async throws -> Int {
         let have = Set(try collections().map(\.id))

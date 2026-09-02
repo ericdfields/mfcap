@@ -4,10 +4,16 @@
       index.json                 {"schema": 1, "entries": [entry...]}
       blobs/<sha256>.bin         content-addressed 4672-byte blobs
                                  (269 Inits cost one file)
+      collections/<id>.json      named device arrangements
+      notes/<entry id>.json      per-entry voice/typed notes (docs/voice-notes.md)
 
 Index writes are atomic (temp file + os.replace). Single-writer assumption;
 no cross-process locking. Every get() re-hashes the blob file against its
 filename (IntegrityError on rot).
+
+`_entry_to_json` below builds a FIXED dict and _save() rewrites EVERY entry
+through it — which is exactly why notes live in their own sidecar files and not
+in the index (docs/voice-notes.md §0).
 """
 from __future__ import annotations
 
@@ -28,6 +34,8 @@ from .collections import (BankItem, PresetCollection, Provenance,
 from .errors import (CollectionNotFoundError, EntryNotFoundError,
                      IntegrityError, LibraryCorruptError, SlotOutOfRangeError)
 from .model import Category, DeviceSnapshot, Preset, PresetRef, Verdict
+from .notes import (NOTE_SCHEMA, NoteDocument, PresetNote, canonical_order,
+                    note_document_from_json, note_document_to_json)
 from .protocol import DUPLICATE_THRESHOLD, SLOTS, digest
 
 _SCHEMA = 1
@@ -167,6 +175,13 @@ class Library:
     def _collection_path(self, coll_id: str) -> Path:
         return self._collections_dir() / f"{coll_id}.json"
 
+    def _notes_dir(self) -> Path:
+        """<root>/notes — created lazily on first write (§1.1)."""
+        return self.root / "notes"
+
+    def _note_path(self, entry_id: str) -> Path:
+        return self._notes_dir() / f"{entry_id}.json"
+
     # ---------------------------------------------------------------- reads
 
     def entries(self) -> List[LibraryEntry]:
@@ -246,12 +261,25 @@ class Library:
     def dedupe(self) -> int:
         """Collapse entries with identical (sha256, name) into one, merging
         attributes (union tags, OR favorite, prefer a set category, keep the
-        first slot). Safe for collections, which reference presets by sha, not
-        by entry id. Returns the number of entries removed."""
+        first slot) AND merging notes sidecars (the losers' notes are folded
+        into the survivor's file, concatenated and re-sorted into the
+        docs/voice-notes.md §1.3 canonical order, and the losers' files are
+        deleted). Safe for collections, which reference presets by sha, not by
+        entry id. Returns the number of entries removed.
+
+        Notes merge like tags, not like slots: an entry's notes are provenance
+        for the bytes, and two catalog rows for the same (sha256, name) were
+        always the same preset, so dropping the loser's notes would lose the
+        only record of what the user said about it. The one refusal is the §1.2
+        schema gate: if ANY sidecar in a group was written by a newer core this
+        one cannot read losslessly, the whole group's files are left untouched —
+        an unreachable-but-intact sidecar beats a rewritten one."""
         keep: Dict[tuple, LibraryEntry] = {}
         order: List[tuple] = []
+        groups: Dict[tuple, List[str]] = {}
         for e in self._entries:
             key = (e.sha256, e.name)
+            groups.setdefault(key, []).append(e.id)
             if key not in keep:
                 keep[key] = e
                 order.append(key)
@@ -268,9 +296,34 @@ class Library:
                              else p.verdict))
         removed = len(self._entries) - len(order)
         if removed:
+            for key in order:
+                if len(groups[key]) > 1:
+                    self._merge_notes(keep[key].id, groups[key])
             self._entries = [keep[k] for k in order]
             self._save()
         return removed
+
+    def _merge_notes(self, survivor: str, ids: Sequence[str]) -> None:
+        """Fold every collapsed entry's notes into the survivor's sidecar and
+        drop the losers' files. `ids` is the whole group in list order;
+        `survivor` is the first of them, and the only one that still exists
+        afterwards."""
+        docs = []
+        for entry_id in ids:
+            doc = self._load_note_document(entry_id)
+            if doc is not None:
+                docs.append((entry_id, doc))
+        if not docs:
+            return
+        # §1.2: never rewrite a file a newer schema wrote, and never destroy one
+        # either — leave the whole group alone and take the orphan.
+        if any(doc.is_read_only for _, doc in docs):
+            return
+        merged: List[PresetNote] = [n for _, doc in docs for n in doc.notes]
+        for entry_id, _ in docs:
+            if entry_id != survivor:
+                self.delete_notes(entry_id)
+        self._write_notes(survivor, merged)     # canonical order applied here
 
     def clear_collection_slot_claims(self) -> int:
         """One-time repair for libraries built before bank import stopped
@@ -344,7 +397,8 @@ class Library:
 
     def remove(self, entry_id: str) -> None:
         """Delete the entry; the blob file is deleted only when no remaining
-        entry AND no remaining collection references it."""
+        entry AND no remaining collection references it, and the entry's notes
+        sidecar goes with it."""
         e = self.entry(entry_id)
         self._entries.remove(e)
         if not self._blob_referenced(e.sha256):
@@ -352,6 +406,10 @@ class Library:
                 self._blob_path(e.sha256).unlink()
             except OSError:
                 pass
+        # Notes GC is unconditional and needs no reference check: a sidecar is
+        # keyed on THIS entry's id, so nothing else can be pointing at it
+        # (docs/voice-notes.md §1.1 — deleting an entry deletes its sidecar).
+        self.delete_notes(entry_id)
         self._save()
 
     def _blob_referenced(self, sha256: str) -> bool:
@@ -494,7 +552,18 @@ class Library:
         number of collections newly merged.
 
         Used to fold the bundled seed into an existing user library without
-        disturbing entries the user already has."""
+        disturbing entries the user already has.
+
+        Notes need NOTHING here, deliberately. A bundled seed is built by the
+        tooling and ships with collections/ and blobs/ only — it has no notes/
+        directory, because a note is a recording of something a user said in an
+        audition session and a seed has never been auditioned. And the merge is
+        collection-granular: it copies arrangements and blobs and mints its own
+        catalog entries with their own fresh ids, so there is no id under which
+        a foreign sidecar could even be addressed. If a future bundle ever did
+        carry notes, this method would have to grow an explicit entry-id
+        remapping; silently importing them is not a thing that can happen by
+        accident."""
         have = {c.id for c in self.collections()}
         merged = 0
         for coll in other.collections():
@@ -579,3 +648,141 @@ class Library:
         coll = PresetCollection.new(name=name, provenance=prov, slots=slots)
         self.save_collection(coll)
         return coll, added
+
+    # ---------------------------------------------------------------- notes
+
+    # The per-entry sidecar store, docs/voice-notes.md §1. PROVENANCE ONLY: no
+    # reader anywhere may consult notes/ to determine an entry's verdict,
+    # category or tags — an accepted proposal goes to its canonical home through
+    # set_verdict / set_category / set_tags. Delete notes/ and the library is
+    # exactly as correct as before; only the provenance is gone.
+
+    def notes(self, entry_id: str) -> List[PresetNote]:
+        """The notes attached to one entry, in the §1.3 canonical order they
+        were written in. A MISSING FILE MEANS ZERO NOTES and is never an error;
+        an unparseable one raises LibraryCorruptError. A sidecar whose entry no
+        longer exists is IGNORED (it is never resurrected), so this returns []
+        for an unknown id rather than raising."""
+        doc = self.note_document(entry_id)
+        return list(doc.notes) if doc is not None else []
+
+    def note_document(self, entry_id: str) -> Optional[NoteDocument]:
+        """The whole sidecar document, or None when there is no file. Callers
+        that care about the §1.2 schema gate — "can I still write to this?" —
+        read `is_read_only` here."""
+        try:
+            self.entry(entry_id)
+        except EntryNotFoundError:
+            return None
+        return self._load_note_document(entry_id)
+
+    def append_note(self, entry_id: str, note: PresetNote) -> List[PresetNote]:
+        """Append one note. The file is rewritten atomically in canonical order.
+        Raises EntryNotFoundError for an unknown entry (a sidecar with no entry
+        is garbage by construction) and IntegrityError when the existing file
+        carries a NEWER schema than this core understands (§1.2)."""
+        existing = self._notes_for_writing(entry_id)
+        return self._write_notes(entry_id, existing + [note])
+
+    def replace_notes(self, entry_id: str,
+                      notes: Sequence[PresetNote]) -> List[PresetNote]:
+        """Replace the whole note list for an entry (the "move to previous
+        preset" half of §4, and correction/acceptance edits). An empty list
+        DELETES the sidecar rather than leaving an empty document behind."""
+        self._notes_for_writing(entry_id)
+        return self._write_notes(entry_id, list(notes))
+
+    # ------------------------------------------- atomic read-modify-write
+    #
+    # The Swift core's mirror of these (FreakCore/Notes.swift) is what makes
+    # a read-modify-write of a sidecar indivisible there: `notes()` followed
+    # by `replace_notes()` is two awaits on an actor with a suspension in
+    # between, and a note appended in the gap is silently overwritten by the
+    # stale list the caller still holds. Because §1.5 keeps no audio, that
+    # verbatim transcript was the only copy that ever existed. Kept here in
+    # parity so both cores offer — and both cores' callers use — the same
+    # indivisible operations.
+
+    def mutate_notes(self, entry_id: str, transform) -> List[PresetNote]:
+        """Read, transform and rewrite an entry's notes as one step."""
+        existing = self._notes_for_writing(entry_id)
+        return self._write_notes(entry_id, list(transform(existing)))
+
+    def remove_note(self, entry_id: str, note_id: str) -> List[PresetNote]:
+        """Drop one note by id. A note that was never there is not an error."""
+        return self.mutate_notes(entry_id,
+                                 lambda ns: [n for n in ns if n.id != note_id])
+
+    def move_note(self, note_id: str, from_entry: str,
+                  to_entry: str) -> Optional[PresetNote]:
+        """Move one note between two sidecars (the §4 "that was about the
+        previous preset" repair).
+
+        THE APPEND LANDS FIRST, deliberately. append_note can raise for reasons
+        that belong entirely to the destination (EntryNotFoundError, the §1.2
+        IntegrityError, any write error); removing first meant such a failure
+        destroyed the note instead of moving it. This order can at worst leave
+        the note in BOTH files, which a user can see and fix.
+        """
+        source = self._notes_for_writing(from_entry)
+        note = next((n for n in source if n.id == note_id), None)
+        if note is None:
+            return None
+        if to_entry == from_entry:
+            return note
+        self.append_note(to_entry, note)
+        self._write_notes(from_entry, [n for n in source if n.id != note_id])
+        return note
+
+    def delete_notes(self, entry_id: str) -> None:
+        """Delete an entry's sidecar. Idempotent, and never an error when there
+        is no file. Deliberately does NOT require the entry to exist: this is
+        also how an orphaned sidecar is garbage-collected. No schema gate — §1.2
+        forbids REWRITING a newer file, and §1.1 says flatly that deleting an
+        entry deletes its sidecar."""
+        try:
+            self._note_path(entry_id).unlink()
+        except OSError:
+            pass
+
+    def _load_note_document(self, entry_id: str) -> Optional[NoteDocument]:
+        """Read + parse, or None when the file is absent. Shared by the public
+        readers, remove()'s GC and dedupe()'s merge."""
+        path = self._note_path(entry_id)
+        if not path.exists():
+            return None
+        try:
+            data = json.loads(path.read_text())
+        except (OSError, ValueError) as e:
+            raise LibraryCorruptError(str(path), str(e)) from e
+        if not isinstance(data, dict):
+            raise LibraryCorruptError(str(path), "not a JSON object")
+        return note_document_from_json(data, path=str(path))
+
+    def _notes_for_writing(self, entry_id: str) -> List[PresetNote]:
+        """The write preflight: the entry must exist, and the file on disk must
+        not be a newer schema."""
+        self.entry(entry_id)                     # EntryNotFoundError
+        doc = self._load_note_document(entry_id)
+        if doc is None:
+            return []
+        if doc.is_read_only:
+            raise IntegrityError(
+                str(self._note_path(entry_id)),
+                f"notes sidecar schema {doc.schema} is newer than this core's "
+                f"{NOTE_SCHEMA} — refusing to rewrite it")
+        return list(doc.notes)
+
+    def _write_notes(self, entry_id: str,
+                     notes: Sequence[PresetNote]) -> List[PresetNote]:
+        """Atomic write in canonical order; an empty list removes the file."""
+        ordered = canonical_order(notes)
+        if not ordered:
+            self.delete_notes(entry_id)
+            return []
+        self._notes_dir().mkdir(parents=True, exist_ok=True)
+        doc = NoteDocument(schema=NOTE_SCHEMA, entry_id=entry_id,
+                           notes=tuple(ordered))
+        atomic_write_text(self._note_path(entry_id),
+                          json.dumps(note_document_to_json(doc), indent=2))
+        return ordered

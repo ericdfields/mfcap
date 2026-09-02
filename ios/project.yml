@@ -85,6 +85,37 @@ targets:
           (RTP-MIDI) sessions that can reach your MicroFreak.
         NSBonjourServices:
           - _apple-midi._udp
+        # Voice notes (docs/voice-notes.md). BOTH strings ship deliberately:
+        # the research sources disagree on whether SpeechAnalyzer needs speech
+        # authorization as well as microphone permission, and a MISSING usage
+        # string is not a denial — it is a process kill. Shipping both costs
+        # nothing; guessing wrong costs the app. The wording is identical in
+        # both so the user sees one promise however iPadOS asks.
+        #
+        # Every clause is a claim the code has to keep: transcription is
+        # on-device (SpeechAnalyzer, never the network-based older API), and
+        # NO AUDIO IS EVER WRITTEN TO DISK — not a temp file, not a ring
+        # buffer, not in a debug build.
+        #
+        # The claim is SCOPED, deliberately. An earlier wording ended
+        # "nothing leaves the device", which the transcript itself does not
+        # honour: notes are stored in Documents/Library/notes/, and Documents
+        # is exposed in the Files app (UIFileSharingEnabled, above) and
+        # included in iCloud Backup like the rest of the library. What is
+        # actually guaranteed is the part that matters and the part the code
+        # enforces — no audio anywhere, and no speech ever sent away to be
+        # recognized. The setup panel says the same thing in the same words,
+        # and adds where the written notes live.
+        NSMicrophoneUsageDescription: >-
+          Freak Librarian listens while you audition a preset so it can write
+          down what you say about it. Your words are transcribed on this iPad
+          and attached to that preset. No audio is recorded or saved, and your
+          speech is never sent anywhere to be recognized.
+        NSSpeechRecognitionUsageDescription: >-
+          Freak Librarian listens while you audition a preset so it can write
+          down what you say about it. Your words are transcribed on this iPad
+          and attached to that preset. No audio is recorded or saved, and your
+          speech is never sent anywhere to be recognized.
         UTExportedTypeDeclarations:
           - UTTypeIdentifier: com.ericbrookfield.mfpreset
             UTTypeDescription: MicroFreak Preset
