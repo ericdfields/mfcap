@@ -13,7 +13,6 @@
 		0B6D8CBFD3870990087747EA /* FreakCore in Frameworks */ = {isa = PBXBuildFile; productRef = ADC1B379508399327DDDED29 /* FreakCore */; };
 		0E37529570B83B9B7425A472 /* NewCollectionSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 257B77D3381D99FE554BBF5B /* NewCollectionSheet.swift */; };
 		0E40C12DA73FB5D3B80E0E5C /* MFProjzImport.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2A8B8AB2C704129E3F9F8CA /* MFProjzImport.swift */; };
-		0F30E717950D7A917B27D206 /* BulkApplyPlanSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = C098FD36934D26DE448CFC8E /* BulkApplyPlanSheet.swift */; };
 		11EE8FB5CFC21E64F890846B /* RestorePlanSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B61B9D62EEA4810F3035F385 /* RestorePlanSheet.swift */; };
 		181918C0FFB0E5153E25F433 /* ProgressBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07574BEA4F872E5E559F1A39 /* ProgressBridge.swift */; };
 		187BF7146F8B70D850EDAA9A /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B9BD3FC345A11BCF583BAFB /* AppModel.swift */; };
@@ -136,7 +135,6 @@
 		B60F9F0887799FB00AE3ECF3 /* FreakLibrarian.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = FreakLibrarian.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B61B9D62EEA4810F3035F385 /* RestorePlanSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RestorePlanSheet.swift; sourceTree = "<group>"; };
 		BF8FD19C2DFE0EA2B4DE1AA3 /* bank_import.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = bank_import.json; sourceTree = "<group>"; };
-		C098FD36934D26DE448CFC8E /* BulkApplyPlanSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BulkApplyPlanSheet.swift; sourceTree = "<group>"; };
 		C4A019A3ED8ACC4BC0079B2B /* SendPlanSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SendPlanSheet.swift; sourceTree = "<group>"; };
 		C7F4BBFD1F3629A3482D8D9D /* SlotPickerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlotPickerSheet.swift; sourceTree = "<group>"; };
 		C99C7DAE83D5D10EDFDD7FD7 /* AppModelCollections.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModelCollections.swift; sourceTree = "<group>"; };
@@ -271,7 +269,6 @@
 				A204282157647DE632D6E67B /* BackupDetailView.swift */,
 				43CD53C322D3A3F8336014A1 /* BackupListView.swift */,
 				E1B2B09D483A09C07512F8FD /* BackupProgressSheet.swift */,
-				C098FD36934D26DE448CFC8E /* BulkApplyPlanSheet.swift */,
 				0C118EC7A91083B21D87D9C6 /* CollectionApplyPlanSheet.swift */,
 				DF884594C6733F0ACF736AFD /* CollectionDetailView.swift */,
 				F04E45C852AB2B33AC99595B /* CollectionsListView.swift */,
@@ -449,7 +446,6 @@
 				5BE6A2DD3708E4940955BBEC /* BackupListView.swift in Sources */,
 				9C6A18BAC2D98DE353830FCB /* BackupProgressSheet.swift in Sources */,
 				6A2B8E287999D8F321773990 /* BackupsModel.swift in Sources */,
-				0F30E717950D7A917B27D206 /* BulkApplyPlanSheet.swift in Sources */,
 				1D85350307A5810B9283B7C2 /* CollectionApplyPlan.swift in Sources */,
 				D051FE9C996D360F5BE827E4 /* CollectionApplyPlanSheet.swift in Sources */,
 				9D2D3DF93F4A15EE54E983F7 /* CollectionDetailView.swift in Sources */,

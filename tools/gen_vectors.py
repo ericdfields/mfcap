@@ -47,7 +47,7 @@ from microfreak.library import (Library, LibraryEntry,    # noqa: E402
 from microfreak.model import (Category, DeviceSnapshot,   # noqa: E402
                               Preset, PresetRef, SlotRecord, TimingReport)
 from microfreak.session import Session                    # noqa: E402
-from microfreak.sync import diff                          # noqa: E402
+from microfreak.sync import diff_baseline                 # noqa: E402
 from microfreak.transports.simulated import (             # noqa: E402
     SimulatedMicroFreak, _synth_blob)
 
@@ -633,12 +633,6 @@ def gen_reply_lag() -> int:
 
 # ------------------------------------------------------------ sync_diff.json
 
-def _lib_entry(i: int, name: str, sha: str, slot: int) -> LibraryEntry:
-    return LibraryEntry(id=f"lib{i:02d}", name=name, sha256=sha,
-                        meta_hex="080000000000000033", slot=slot,
-                        added_at="2026-09-01T00:00:00", tags=())
-
-
 def _snapshot(records) -> DeviceSnapshot:
     return DeviceSnapshot(taken_at="2026-09-01T00:00:00",
                           records=tuple(records),
@@ -653,6 +647,10 @@ def _rec_json(r: SlotRecord) -> dict:
     return {"slot": r.slot, "name": r.name, "sha256": r.sha256}
 
 
+def _bref(name: str, sha: str) -> PresetRef:
+    return PresetRef(sha256=sha, name=name, meta_hex="080000000000000033")
+
+
 def gen_sync_diff() -> int:
     u = {i: p.digest(_synth_blob(11, f"user{i}")) for i in range(4)}
     init_sha = p.digest(_synth_blob(11, "init"))
@@ -660,49 +658,91 @@ def gen_sync_diff() -> int:
     missing_sha = p.digest(_synth_blob(11, "missing"))
     records = ([_rec(i, f"User {i}", u[i]) for i in range(4)]
                + [_rec(s, "Init", init_sha) for s in (500, 501, 502, 503)])
-    entries = [_lib_entry(0, "User 0", u[0], 0),
-               _lib_entry(1, "Newer Take", newer_sha, 1),
-               _lib_entry(2, "Went Missing", missing_sha, 500),
-               _lib_entry(3, "Kept Init", init_sha, 501)]
-    lib = Library(Path("unused-in-memory"), entries)
+    baseline = {0: _bref("User 0", u[0]),
+                1: _bref("Newer Take", newer_sha),
+                500: _bref("Went Missing", missing_sha),
+                501: _bref("Kept Init", init_sha)}
     snap = _snapshot(records)
 
-    def diff_case(name, threshold, note):
+    def diff_case(name, threshold, note, *, recs=None, base=None):
+        recs = records if recs is None else recs
+        base = baseline if base is None else base
         kwargs = {} if threshold is None else {"threshold": threshold}
-        d = diff(snap, lib, **kwargs)
+        d = diff_baseline(_snapshot(recs), base, **kwargs)
         return {
             "name": name,
             "threshold": threshold,
-            "records": [_rec_json(r) for r in records],
-            "library": [{"slot": e.slot, "name": e.name, "sha256": e.sha256}
-                        for e in entries],
+            "records": [_rec_json(r) for r in recs],
+            "baseline": [{"slot": s, "sha256": base[s].sha256,
+                          "name": base[s].name, "meta_hex": base[s].meta_hex}
+                         for s in sorted(base)],
             "expected": [{"slot": row.slot, "status": row.status.value,
-                          "status_name": row.status.name} for row in d.slots],
+                          "status_name": row.status.name,
+                          "name_differs": row.name_differs}
+                         for row in d.slots],
+            "unread_baseline_slots": list(d.unread_baseline_slots),
             "note": note,
         }
 
+    sparse = {0: _bref("User 0", u[0])}
+    exact = {r.slot: _bref(r.name, r.sha256) for r in records}
+    renamed = dict(exact)
+    renamed[2] = _bref("Renamed Only", u[2])
+
     cases = [
         diff_case("five_statuses", None,
-                  "default threshold 3: 0 IN_SYNC, 1 DIFFERS, 2/3 "
-                  "DEVICE_ONLY, 500 LIBRARY_ONLY (assigned entry over an "
-                  "expendable slot), 501 IN_SYNC (sha equality wins before "
-                  "expendability), 502/503 EMPTY"),
+                  "default threshold 3: 0 IN_SYNC, 1 DIFFERS, 2/3 UNLISTED "
+                  "(the baseline says nothing about those slots — NOT "
+                  "missing), 500 BASELINE_ONLY (the collection places a "
+                  "preset over an expendable slot), 501 IN_SYNC (sha equality "
+                  "wins before expendability), 502/503 EMPTY"),
         diff_case("threshold_5", 5,
                   "at threshold 5 the four Inits stop being expendable: "
-                  "500 becomes DIFFERS, 502/503 become DEVICE_ONLY; sha "
+                  "500 becomes DIFFERS, 502/503 become UNLISTED; sha "
                   "equality (0, 501) is unaffected"),
+        diff_case("sparse_baseline", None,
+                  "the regression that names the bug: a baseline mentioning "
+                  "only slot 0 against 8 device slots reports 0 IN_SYNC and "
+                  "NOTHING else actionable — zero `missing`, zero `changed`. "
+                  "Slots a collection is silent about are UNLISTED/EMPTY.",
+                  base=sparse),
+        diff_case("exact_match", None,
+                  "baseline == every device record: all IN_SYNC, every other "
+                  "bucket empty — a device holding its collection reads as in "
+                  "sync, expendable Init slots included",
+                  base=exact),
+        diff_case("name_only_differs", None,
+                  "slot 2's baseline ref has the same sha under a different "
+                  "name: status stays IN_SYNC (the diff is content-based) but "
+                  "name_differs is true, which is what drives plan_apply to "
+                  "WRITE",
+                  base=renamed),
+        diff_case("unread_baseline_slots", None,
+                  "the snapshot covers slots 0..3 only; the baseline's 500 "
+                  "and 501 come back in unread_baseline_slots — unknown, "
+                  "never reported as missing",
+                  recs=records[:4]),
     ]
-    # sanity-pin the headline case against the reference expectations
+    # sanity-pin the headline cases against the reference expectations
     st = {c["slot"]: c["status_name"] for c in cases[0]["expected"]}
-    assert st == {0: "IN_SYNC", 1: "DIFFERS", 2: "DEVICE_ONLY",
-                  3: "DEVICE_ONLY", 500: "LIBRARY_ONLY", 501: "IN_SYNC",
+    assert st == {0: "IN_SYNC", 1: "DIFFERS", 2: "UNLISTED",
+                  3: "UNLISTED", 500: "BASELINE_ONLY", 501: "IN_SYNC",
                   502: "EMPTY", 503: "EMPTY"}, st
     st5 = {c["slot"]: c["status_name"] for c in cases[1]["expected"]}
-    assert st5[500] == "DIFFERS" and st5[502] == "DEVICE_ONLY"
+    assert st5[500] == "DIFFERS" and st5[502] == "UNLISTED"
+    sparse_st = {c["slot"]: c["status_name"] for c in cases[2]["expected"]}
+    assert sparse_st[0] == "IN_SYNC"
+    assert "BASELINE_ONLY" not in sparse_st.values(), sparse_st
+    assert "DIFFERS" not in sparse_st.values(), sparse_st
+    assert {c["status_name"] for c in cases[3]["expected"]} == {"IN_SYNC"}
+    nd = {c["slot"]: (c["status_name"], c["name_differs"])
+          for c in cases[4]["expected"]}
+    assert nd[2] == ("IN_SYNC", True) and nd[0] == ("IN_SYNC", False), nd
+    assert cases[5]["unread_baseline_slots"] == [500, 501]
 
     bad_records = [_rec(0, "User 0", u[0]), _rec(1, "Unread", None)]
     try:
-        diff(_snapshot(bad_records), lib)
+        diff_baseline(_snapshot(bad_records), baseline)
         raise AssertionError("diff without hashes must refuse")
     except ValueError:
         pass
@@ -710,20 +750,27 @@ def gen_sync_diff() -> int:
         "name": "refuses_missing_hashes",
         "threshold": None,
         "records": [_rec_json(r) for r in bad_records],
-        "library": [],
+        "baseline": [],
         "expect_error": "ValueError",
         "note": "diff requires every record to carry sha256 — refusing "
                 "beats guessing",
     })
     return emit(
         "sync_diff.json",
-        "Pure sync.diff decision-table vectors: synthetic device snapshot "
-        "records (slot, name, sha256 — shas are real sha256 hex of seeded "
-        "blobs, but only string equality matters) against an in-memory "
-        "library slot map. Status enum: IN_SYNC='in_sync', "
-        "DEVICE_ONLY='added', LIBRARY_ONLY='missing', DIFFERS='changed', "
-        "EMPTY='empty'. Rows come back one per record, ascending slot. "
-        "threshold null means the default DUPLICATE_THRESHOLD=3. " + REGEN,
+        "Pure sync.diff_baseline decision-table vectors: synthetic device "
+        "snapshot records (slot, name, sha256 — shas are real sha256 hex of "
+        "seeded blobs, but only string equality matters) against a BASELINE "
+        "arrangement ({slot: PresetRef}, normally a PresetCollection's "
+        "slots). The library is never a baseline: it is a flat catalog and "
+        "carries no slot opinion. Status enum: IN_SYNC='in_sync', "
+        "UNLISTED='unlisted' (baseline silent, device slot real), "
+        "BASELINE_ONLY='missing' (baseline places a preset, device slot "
+        "expendable), DIFFERS='changed', EMPTY='empty'. `name_differs` is "
+        "true when the shas match but the names do not — never a status "
+        "change, but it is what makes plan_apply WRITE. "
+        "`unread_baseline_slots` lists baseline slots the snapshot never "
+        "covered. Rows come back one per record, ascending slot. threshold "
+        "null means the default DUPLICATE_THRESHOLD=3. " + REGEN,
         cases)
 
 

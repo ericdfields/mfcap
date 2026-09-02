@@ -358,30 +358,25 @@ struct VectorTests {
                 takenAt: "2026-09-01T00:00:00", records: records,
                 timing: TimingReport(totalSeconds: 0, perSlotSeconds: 0,
                                      nameMsMedian: nil, dumpMsMedian: nil))
-            var slotMap: [Int: LibraryEntry] = [:]
-            for (i, d) in (c["library"] as! [[String: Any]]).enumerated() {
-                let entry = LibraryEntry(id: String(format: "lib%02d", i),
-                                         name: str(d, "name"), sha256: str(d, "sha256"),
-                                         metaHex: "080000000000000033",
-                                         slot: optInt(d, "slot"),
-                                         addedAt: "2026-09-01T00:00:00", tags: [])
-                if let slot = entry.slot {
-                    slotMap[slot] = entry
-                }
+            var baseline: [Int: PresetRef] = [:]
+            for d in (c["baseline"] as! [[String: Any]]) {
+                baseline[int(d, "slot")] = PresetRef(
+                    sha256: str(d, "sha256"), name: str(d, "name"),
+                    metaHex: str(d, "meta_hex"))
             }
             if let expectError = c["expect_error"] as? String {
                 #expect(expectError == "ValueError")
                 #expect(throws: FreakError.snapshotMissingHashes) {
-                    try computeDiff(snapshot: snapshot, slotMap: slotMap)
+                    try computeDiff(snapshot: snapshot, baseline: baseline)
                 }
                 continue
             }
             let result: SyncDiff
             if let threshold = optInt(c, "threshold") {
-                result = try computeDiff(snapshot: snapshot, slotMap: slotMap,
+                result = try computeDiff(snapshot: snapshot, baseline: baseline,
                                          threshold: threshold)
             } else {
-                result = try computeDiff(snapshot: snapshot, slotMap: slotMap)
+                result = try computeDiff(snapshot: snapshot, baseline: baseline)
             }
             let expected = c["expected"] as! [[String: Any]]
             #expect(result.slots.count == expected.count, "\(name)")
@@ -389,8 +384,13 @@ struct VectorTests {
                 #expect(row.slot == int(exp, "slot"), "\(name)")
                 #expect(row.status.rawValue == str(exp, "status"),
                         "\(name): slot \(row.slot)")
+                #expect(row.nameDiffers == bool(exp, "name_differs"),
+                        "\(name): slot \(row.slot)")
                 #expect(row.device?.slot == row.slot, "\(name)")
             }
+            let unread = (c["unread_baseline_slots"] as! [Any])
+                .map { ($0 as! NSNumber).intValue }
+            #expect(result.unreadBaselineSlots == unread, "\(name)")
         }
     }
 

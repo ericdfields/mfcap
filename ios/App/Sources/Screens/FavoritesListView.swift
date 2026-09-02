@@ -50,14 +50,16 @@ struct FavoritesListView: View {
     }
 
     private var list: some View {
-        let badges = model.slots.syncBadges
+        let statusBySha = model.sync.statusBySha
+        let baselineName = model.sync.baseline?.name
         let corrupt = model.libraryModel.corruptEntries
         return List {
             ForEach(model.libraryModel.filtered(tag: nil)) { entry in
                 LibraryRowView(entry: entry, renamingEntry: $renamingEntry,
                                requestDelete: { deleteCandidate = $0 },
-                               syncHint: LibraryRowView.syncHint(for: entry,
-                                                                 badges: badges),
+                               syncHint: LibraryRowView.syncHint(
+                                   for: entry, statusBySha: statusBySha,
+                                   baselineName: baselineName),
                                corruptDetail: corrupt[entry.id])
             }
         }

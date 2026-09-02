@@ -72,9 +72,6 @@ struct RootView: View {
         .sheet(item: $model.restorePlanRequest) { request in
             RestorePlanSheet(request: request)
         }
-        .sheet(item: $model.bulkApplyPlan) { plan in
-            BulkApplyPlanSheet(plan: plan)
-        }
         .sheet(item: $model.slotPickerRequest) { request in
             SlotPickerSheet(request: request)
         }

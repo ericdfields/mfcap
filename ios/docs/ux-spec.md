@@ -68,7 +68,7 @@ bottom status bar are gone; connection state is the Device section's first row.)
 - Library tags appear as sidebar children; selecting one filters the library list. No folders in v1 (§6).
 - **Device activity — revised (addendum §30.1).** There is **no** global bottom bar: a `safeAreaInset(edge: .bottom)` on the split view is not propagated into the columns' safe areas, so it painted over `CollectionDetailView`'s Apply button and `SlotListView`'s multi-select bar. Connection state (§12) is now the first row of the sidebar's **Device** section (`DeviceStatusRow`), carrying the connect / practice-profile / disconnect verbs and **Device Activity…**. The active device operation — mini progress bar, ETA, Cancel/Pause, "+N queued" — is a **transient** `.topBarTrailing` toolbar item on the content column (`deviceActivityToolbar()`); "Idle" is its absence. Tapping it opens the same **Operations popover** (current, queued, per-op Cancel, "Stop batch after current slot", recent completions and failures), which is still the only home of device busyness and the only mid-flight cancel for a long op.
 - **Practice banner** (§11) sits above the content column whenever the session is simulated.
-- Sheets (modal): `BackupProgressSheet`, `RestorePlanSheet`, `BulkApplyPlanSheet`, `SendPlanSheet`, `ConnectSheet`. Alerts: single-target overwrite confirmation, error alerts per §14.
+- Sheets (modal): `BackupProgressSheet`, `RestorePlanSheet`, `CollectionApplyPlanSheet`, `SendPlanSheet`, `ConnectSheet`. Alerts: single-target overwrite confirmation, error alerts per §14.
 
 Navigation state (`SidebarSelection`, selected slot/entry/backup) lives in `AppModel` and is restorable via `SceneStorage` so a relaunch lands where the user left off (selection only — never a resumed device operation).
 
@@ -374,31 +374,41 @@ Entered from a backup's detail ("Restore…") or per-slot from `SlotDetailView`.
 
 ## 17. Sync view (`SyncListView`, `SyncSlotDetailView`)
 
-Device vs. library, one row per slot, straight from the core's `SyncDiff` — the diff computes; **only explicit user actions write**.
+Device vs. **one collection the user chose**, one row per slot, straight from the core's `SyncDiff` — the diff computes; **only explicit user actions write**.
+
+**The baseline is a collection, not the library.** A collection is a named arrangement ("Ambient Peaks", "my Oct-2023 state"); the library is a catalog of every patch owned and says nothing about where things belong on the device. Diffing against the library merged all 17 imported packs — every one of them numbering from slot 1 — into one incoherent slot map, and reported "changed 148 / missing 268" for a device that was fine.
+
+**Baseline picker** above the provenance header: `Compare against: [ Ambient Peaks ▾ ]` with a subtitle (`32 slots · imported bank`). The choice is remembered per device identity. Applying a collection makes it the baseline.
+
+**`.needsBaseline` empty state** (before the read CTA, and where a fresh install lands): "Pick something to compare against — Sync compares your device to one collection, an arrangement you saved or imported. Your library is a catalog of every patch you own; it doesn't describe where things should sit on the device." Actions: **Choose a Collection…**, **Snapshot This Device as a Collection**, **Browse Collections**. Never a default guess: a wrong default is how the merged-mash baseline happened.
 
 **Precondition banner (the honest gate):** the diff needs a fully hashed snapshot. Header always shows provenance: "Compared against device read 12 min ago (backup 2026-09-01 14:32) · 3 writes since." With no hashed snapshot, the list is replaced by the CTA state: "To compare, the app reads every slot (~3½ minutes) and keeps it as a backup." → **Read Device & Compare**. Because verified writes patch the snapshot (§4), applying rows does not invalidate the diff.
 
-**Filter bar with live counts**, each status toggleable; default shows everything except `in-sync` and `empty`:
+**Filter bar with live counts**, each status toggleable; default shows only real disagreements with the chosen collection (`changed`, `missing`) — `unlisted`, `in sync` and `empty` are opt-in:
 
 ```
-Added 12 · Changed 3 · Missing 5 · In sync 223 · Empty 269
+Changed 0 · Missing 0 · Unlisted 460 · In sync 32 · Empty 20
 ```
 
-**Rows and per-status actions** (statuses map 1:1 to core `SlotStatus`):
+When nothing is actionable: "✓ Device matches 'Ambient Peaks' — 32 of 32 slots in sync. 480 slots aren't part of this collection." Plus, when the snapshot did not cover every baseline slot, "3 slots this collection defines weren't read." — unknown, never reported as missing.
+
+**Rows** (statuses map 1:1 to core `SlotStatus`). The row gives its width to the **preset name**: a bare name on line 1, a relationship line only when it says something the badge does not, and no inline button (the old flat HStack had five flexible participants and no layout priority, so names truncated to `device "…` and the button hyphenated to `Re-` / `solve…`). The per-row actions live in the **context menu** and **swipe actions**, and in `SyncSlotDetailView` one tap away, which has the width for full labels.
 
 | Status (core) | Row reads | Explicit action(s) | Guard |
 |---|---|---|---|
-| `added` (DEVICE_ONLY) | `[097] device "Weird Organ" · not in library` | **Import to Library** (instant — bytes already on disk from the snapshot-backup) | none — additive |
-| `changed` (DIFFERS) | `[413] device "Bass Prophet" ≠ library "Bass Prophet v2"` | **Push Library → Device** (verified write) / **Pull Device → Library** (instant; new entry takes the slot claim; old entry kept, claim cleared — stated) | push: full §9 dialog naming the device preset |
-| `missing` (LIBRARY_ONLY) | `[510] library "Fat Bass" · device slot empty` | **Send to Device** (verified write) | §9 popover — victim is expendable, evidence shown |
-| `in-sync` | informational | none | — |
+| `changed` (DIFFERS) | `[413] Bass Prophet` / `Ambient Peaks has "Bass Prophet v2"` | **Send Collection's Preset** (verified write) / **Update Collection from Device** (local) / **Save Device Preset to Library** (local) | send: full §9 dialog naming the device preset |
+| `missing` (BASELINE_ONLY) | `[510] Fat Bass` / `device slot empty` | **Send to Device** (verified write) | §9 popover — victim is expendable, evidence shown |
+| `unlisted` (UNLISTED) | `[097] Weird Organ` (+ `not in this collection · not in your library`) | **Save to Library** (instant — bytes already on disk), **Add to Collection** (local) | none — additive |
+| `in sync` | informational; `names differ · …` when only the name does | none | — |
 | `empty` | informational; row explains the judgment ("identical to 268 other slots") | none by default | — |
 
-**Bulk apply:** toolbar **Apply…** opens `BulkApplyPlanSheet`: sections "Import 12 to library" (pre-checked), "Send 5 to device" (pre-checked, each row shows its victim + expendability), "Conflicts (3)" — **conflicts are never pre-resolved**: each `changed` row requires an explicit Push / Pull / Skip choice, default Skip. Footer: totals · time estimate ("5 writes ≈ 5 s") · backup-freshness line · confirm labeled **"Write 5 Slots to Device"**. Execution is one queued op with per-row ticks; a failed write stops the batch (core restore semantics), marks completed rows, offers Retry Remaining.
+`unlisted` and `empty` both mean *this collection has no opinion here*. Neither is actionable, and neither is `missing`.
 
-**`SyncSlotDetailView`:** both sides' names and shas, judgment evidence, name-vs-content note ("names differ; contents identical" for renamed in-sync rows), slot history excerpt, and the same explicit actions with full context.
+**Apply** (toolbar menu): **"Make Device Match 'Ambient Peaks'…"** routes to the existing collection Apply/Switch — the §11 cross-identity gate, then `CollectionApplyPlanSheet` over the core's `planApply`. That is deliberate: `planApply` is the *same decision table* as this screen's diff, so the read-only view and the write plan can never disagree, and there is exactly one device-writing definition of "how does my device differ from this collection". The catalog-side half is a separate, non-device action: **"Save Unlisted Presets to Library…"**, which adds every `unlisted` row whose bytes aren't already catalogued — with **no slot claim**.
 
-**States:** no snapshot → CTA above · everything in sync → "Device and library match — 223 in sync, 269 empty" + timestamp · compare running → the backup's progress inline (same op) · stale → header ages, warning tone past 24 h with Re-read · no library → routes to the library empty state.
+**`SyncSlotDetailView`:** the device side and the **"In 'Ambient Peaks'"** side (name + sha from the collection's `PresetRef`, linking into the library only when the catalog actually holds those bytes), judgment evidence, name-vs-content note ("names differ; contents identical" for renamed in-sync rows), slot history excerpt, and the same explicit actions with full context.
+
+**States:** no baseline → the picker state above · no snapshot → the read CTA · everything in sync → "Device matches 'Ambient Peaks' — 32 of 32 slots in sync." + timestamp · compare running → the backup's progress inline (same op) · stale → header ages, warning tone past 24 h with Re-read · no library → routes to the library empty state.
 
 ---
 
@@ -427,7 +437,7 @@ FreakLibrarianApp (App/Sources/MicroFreakLibrarianApp.swift)
       ├─ .toolbar(content column): deviceActivityToolbar() → ActiveOperationView → OperationsPopover  (§30.1)
       ├─ .fullScreenCover: AuditionSessionView                                              (§30.2)
       ├─ passive banner: AuditionLoanBanner (minimized session, no dismiss)                  (§30.3)
-      ├─ .sheet: BackupProgressSheet | RestorePlanSheet | BulkApplyPlanSheet | SendPlanSheet | ConnectSheet
+      ├─ .sheet: BackupProgressSheet | RestorePlanSheet | CollectionApplyPlanSheet | SendPlanSheet | ConnectSheet
       ├─ .alert / .popover: OverwriteConfirmation (from OverwritePlan) | VerifyMismatchSheet | error alerts
       └─ drag/drop wiring via PresetTransfer (Transferable)
 ```
@@ -439,7 +449,7 @@ FreakLibrarianApp (App/Sources/MicroFreakLibrarianApp.swift)
 | `AppModel` (+ `AppModelSync`, `AppModelBackup`, `AppModelWrites` extensions) | connection state machine; the single **device-operation queue** (quick FIFO behind exclusive long ops, cancel current, recent-ops list); device identity; slot-history journal; wiring child models | UI layout decisions; direct frame access |
 | `SlotBrowserModel` | the 512-row cache (name load-state, sha, judgment, sync badge, flags `torn`/`verifyFailed`/`busy`); names-as-of; search text; refreshNames / readSlot / rename / saveToLibrary intents; snapshot apply + per-write patch | writing without an `OverwritePlan` confirmation (`confirm(plan)` is the only path to the wire) |
 | `LibraryModel` | entries cache mirroring the `Library` actor; tag list; import/export intents; delete/assign-slot guards' facts | touching the device |
-| `SyncModel` | diff state machine: `needsSnapshot(estimate)` → `comparing(ProgressEvent)` → `ready(SyncDiff, provenance)` / `failed`; filter set; per-row and bulk apply **plan builders** (returning `OverwritePlan` / `BulkApplyPlan`) | executing a plan itself — execution goes through `AppModel`'s queue after confirmation |
+| `SyncModel` | diff state machine: `needsBaseline` → `needsSnapshot(estimate)` → `comparing(ProgressEvent)` → `ready(SyncDiff, baseline, provenance)` / `failed`; the chosen baseline collection; filter set; the content-keyed `statusBySha` the library rows read | executing a plan itself — execution goes through `AppModel`'s queue after confirmation, and the whole-arrangement write is the collection Apply pre-flight |
 | `BackupsModel` | backup catalog; active backup progress; resumable detection; restore plan builder (with the automatic names refresh); delete guard facts | writing to the device outside a confirmed restore plan |
 | `FreshnessModel` | `latestCompleteBackup`, `writesSinceBackup`, `namesAsOf` — the single source for every freshness line | — |
 | `ToastCenter` | transient toasts incl. undo-carrying ones | modal decisions |

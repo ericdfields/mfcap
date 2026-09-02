@@ -223,6 +223,14 @@ public struct ApplyPlan: Sendable, Equatable {
 ///
 /// A name-only difference (sha equal, name differing) is a WRITE, folded into
 /// the full verified write for the three-action model.
+///
+/// Computed on `computeDiff` — the SAME decision table the Sync screen renders
+/// — so the read-only diff and the write plan can never disagree:
+///   .inSync && !nameDiffers                    -> SKIP_UNCHANGED
+///   .inSync (name only) / .differs / .baselineOnly -> WRITE
+///   .unlisted / .empty                          -> the unlisted policy
+/// Expendability only splits the diff's LABEL (`changed` vs `missing`), never
+/// the action, so routing through the diff leaves every plan byte-identical.
 public func planApply(collection: PresetCollection, snapshot: DeviceSnapshot,
                       options: ApplyOptions = ApplyOptions()) throws -> ApplyPlan {
     let records = snapshot.records.sorted { $0.slot < $1.slot }
@@ -245,28 +253,30 @@ public func planApply(collection: PresetCollection, snapshot: DeviceSnapshot,
                 + "snapshot's \(total) slots")
     }
 
+    let d = try computeDiff(snapshot: snapshot, baseline: collection.slots)
     var plans: [SlotPlan] = []
     var writeCount = 0, clearCount = 0, skipCount = 0
-    for r in records {
-        if let ref = collection.slots[r.slot] {
-            if r.sha256 == ref.sha256 && r.name == ref.name {
-                plans.append(SlotPlan(slot: r.slot, action: .skip, incoming: nil, victim: nil))
+    for row in d.slots {
+        let r = row.device
+        if let ref = row.baseline {
+            if row.status == .inSync && !row.nameDiffers {
+                plans.append(SlotPlan(slot: row.slot, action: .skip, incoming: nil, victim: nil))
                 skipCount += 1
             } else {
-                plans.append(SlotPlan(slot: r.slot, action: .write, incoming: ref, victim: r))
+                plans.append(SlotPlan(slot: row.slot, action: .write, incoming: ref, victim: r))
                 writeCount += 1
             }
         } else if options.unlisted == .clear {
             let cw = options.clearWith!
-            if r.sha256 == cw.sha256 && r.name == cw.name {
-                plans.append(SlotPlan(slot: r.slot, action: .skip, incoming: nil, victim: nil))
+            if let r, r.sha256 == cw.sha256, r.name == cw.name {
+                plans.append(SlotPlan(slot: row.slot, action: .skip, incoming: nil, victim: nil))
                 skipCount += 1
             } else {
-                plans.append(SlotPlan(slot: r.slot, action: .clear, incoming: cw, victim: r))
+                plans.append(SlotPlan(slot: row.slot, action: .clear, incoming: cw, victim: r))
                 clearCount += 1
             }
         } else {   // leave
-            plans.append(SlotPlan(slot: r.slot, action: .skip, incoming: nil, victim: nil))
+            plans.append(SlotPlan(slot: row.slot, action: .skip, incoming: nil, victim: nil))
             skipCount += 1
         }
     }

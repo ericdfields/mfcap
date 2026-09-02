@@ -414,8 +414,10 @@ entirely on disk; no device needed.
 Per bank:
 1. Each non-empty preset's blob is added to the **library** (content-addressed — `Library.add`
    dedupes the blob file; a shared blob costs nothing new). Category is forced **Uncategorized**
-   (established fact: pack meta is all-zero; §21.2), tags empty, no slot claim. Duplicate
-   (sha, name) pairs are not re-added.
+   (established fact: pack meta is all-zero; §21.2), tags empty, **no slot claim** — the
+   collection below owns the arrangement, and stamping it onto the flat catalog made every
+   pack (all of them numbering from slot 1) steal slots 0..31 from the previous import.
+   Duplicate (sha, name) pairs are not re-added.
 2. A `Collection` is created whose `slots` map the filename-derived positions to the imported shas
    (name/meta from the archive). Empty/Init entries in the bank (short archives, `blob == nil`) →
    absent slots.
@@ -452,7 +454,7 @@ diff computes; only the user writes.
 
 ### 27.1 Pre-flight diff (`CollectionApplyPlanSheet`)
 
-Modeled on `RestorePlanSheet` (§16.2) and `BulkApplyPlanSheet` (§17): a modal sheet, Practice banner
+Modeled on `RestorePlanSheet` (§16.2) and the §17 sync plan surfaces: a modal sheet, Practice banner
 when simulated, bottom-anchored confirm/cancel.
 
 **Precondition (honest gate).** An accurate, minimal switch needs current device shas

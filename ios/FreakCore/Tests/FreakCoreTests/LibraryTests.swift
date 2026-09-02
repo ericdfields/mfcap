@@ -377,4 +377,119 @@ struct LibraryDedupeTests {
         #expect(await lib2.entries().count == 1)
         #expect(e.favorite && e.tags.contains("pad") && e.slot == 5)
     }
+
+    /// The reported bug and its one-time repair. Two packs both covering
+    /// slots 0…1 used to fight over the flat catalog's slot claims; now
+    /// neither claims anything, and the repair de-pollutes a library that
+    /// was built before the fix — without touching a deliberate pin.
+    @Test func bankImportsClaimNoSlotsAndTheRepairIsLossFree() async throws {
+        let root = tempDir("slot-claims")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let lib = try Library.create(at: root)
+        _ = try await lib.collectionFromBank(
+            [BankItem(slot: 0, name: "Peak A", meta: Data(count: 9), blob: blob(1)),
+             BankItem(slot: 1, name: "Peak B", meta: Data(count: 9), blob: blob(2))],
+            name: "Ambient Peaks", source: "peaks.mfprojz")
+        _ = try await lib.collectionFromBank(
+            [BankItem(slot: 0, name: "Bass A", meta: Data(count: 9), blob: blob(3)),
+             BankItem(slot: 1, name: "Bass B", meta: Data(count: 9), blob: blob(4))],
+            name: "Naughty Bass", source: "bass.mfprojz")
+        #expect(await lib.entries().count == 4)
+        #expect(await lib.slotMap().isEmpty,
+                "no pack steals slots from the last: the catalog has no slot opinion")
+        #expect(try await lib.collections().count == 2)
+        #expect(try await lib.collections().allSatisfy { $0.coveredSlots() == [0, 1] },
+                "each arrangement is intact in its own collection")
+
+        // A library built BEFORE the fix: simulate its stamped claims, plus a
+        // deliberate pin at a slot no collection places.
+        let entries = await lib.entries()
+        let peakA = try #require(entries.first { $0.name == "Peak A" })
+        let bassB = try #require(entries.first { $0.name == "Bass B" })
+        try await lib.assignSlot(id: peakA.id, slot: 0)     // explained by "Ambient Peaks"
+        try await lib.assignSlot(id: bassB.id, slot: 400)   // no collection places this
+        #expect(await lib.slotMap().count == 2)
+
+        let cleared = try await lib.clearCollectionSlotClaims()
+        #expect(cleared == 1, "only the collection-explained claim is cleared")
+        let after = await lib.slotMap()
+        #expect(after.count == 1 && after[400]?.id == bassB.id,
+                "a deliberate pin no collection explains survives")
+        #expect(try await lib.clearCollectionSlotClaims() == 0, "idempotent")
+
+        // Loss-free: the arrangement that left the catalog is still in the
+        // collection that owns it, byte for byte.
+        let peaks = try #require(try await lib.collections()
+            .first { $0.name == "Ambient Peaks" })
+        #expect(peaks.slots[0]?.sha256 == peakA.sha256)
+        #expect(peaks.slots[0]?.name == "Peak A")
+    }
+
+    /// The repair must leave a DEVICE CAPTURE alone — the promise its
+    /// docstring makes and `SeedInstaller` repeats. The ordinary two-step
+    /// flow ("Import Device…" then "Snapshot This Device as a Collection")
+    /// records the same (sha256, name, slot) triples in a `.deviceSnapshot`
+    /// collection that `importSnapshot` pinned onto the entries, so a repair
+    /// keyed on EVERY collection wiped every one of those pins. Only a bank
+    /// import ever stamped a slot it did not own.
+    @Test func theRepairLeavesADeviceCaptureAlone() async throws {
+        let root = tempDir("capture-pins")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let lib = try Library.create(at: root)
+
+        let records = (0..<5).map { i in
+            SlotRecord(slot: i, name: "P\(i)",
+                       sha256: Wire.digest(blob(UInt8(i + 1))),
+                       meta: Data(count: 9), blob: blob(UInt8(i + 1)))
+        }
+        let snap = DeviceSnapshot(
+            takenAt: "2026-09-02T10:00:00", records: records,
+            timing: TimingReport(totalSeconds: 0, perSlotSeconds: 0,
+                                 nameMsMedian: nil, dumpMsMedian: nil))
+
+        _ = try await lib.importSnapshot(snap)
+        #expect(await lib.slotMap().count == 5, "the capture pins where it came from")
+
+        let capture = try await lib.collectionFromSnapshot(snap, name: "Oct dump")
+        #expect(capture.provenance.kind == .deviceSnapshot)
+        #expect(capture.slots.count == 5)
+
+        #expect(try await lib.clearCollectionSlotClaims() == 0,
+                "a device capture's pins are left alone")
+        #expect(await lib.slotMap().count == 5)
+        #expect(Set(await lib.slotMap().keys) == Set(0..<5))
+    }
+
+    /// A ref must never name a blob the store does not hold: `presetForRef`
+    /// throws on it and `planApply` folds the slot to SKIP forever, so an
+    /// adopted slot would be silently dropped from every future Apply.
+    /// `storePreset` is the only correct way to mint a ref from loose bytes.
+    @Test func storePresetMakesAnAdoptedRefResolvable() async throws {
+        let root = tempDir("store-preset")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let lib = try Library.create(at: root)
+        let adopted = try Preset(name: "From Device", blob: blob(9),
+                                 meta: Data(count: 9))
+
+        // The wrong way: a ref built straight from bytes never handed over.
+        let dangling = PresetRef(preset: adopted)
+        await #expect(throws: FreakError.self) {
+            _ = try await lib.presetForRef(dangling)
+        }
+
+        let stored = try await lib.storePreset(adopted)
+        #expect(stored == dangling, "same ref — only the blob was missing")
+        #expect(try await lib.presetForRef(stored) == adopted)
+        #expect(try await lib.storePreset(adopted) == stored, "idempotent")
+        #expect(await lib.entries().isEmpty,
+                "storePreset catalogues nothing: the arrangement is the collection's")
+
+        // …and the adopted slot survives a save/reload round trip resolvable.
+        let coll = PresetCollection.new(
+            name: "Adopted", provenance: Provenance(kind: .manual, source: ""),
+            slots: [2: stored])
+        try await lib.saveCollection(coll)
+        let reloaded = try await lib.collection(id: coll.id)
+        _ = try await lib.presetForRef(try #require(reloaded.slots[2]))
+    }
 }

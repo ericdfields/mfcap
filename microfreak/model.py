@@ -156,6 +156,14 @@ class PresetRef:
     name: str          # validated printable ASCII (<= 23), as it should be written
     meta_hex: str      # 18 lowercase hex chars (9 bytes), round-tripped verbatim
 
+    @classmethod
+    def of(cls, preset: "Preset") -> "PresetRef":
+        """The inverse of to_preset: describe a resolved preset as a
+        collection occupant, so a caller can record "the collection expects
+        THIS here" without re-implementing the meta hex codec."""
+        return cls(sha256=preset.sha256, name=preset.name,
+                   meta_hex=bytes(preset.meta).hex())
+
     def to_preset(self, blob: bytes) -> "Preset":
         return Preset(name=self.name, blob=blob, meta=bytes.fromhex(self.meta_hex))
 

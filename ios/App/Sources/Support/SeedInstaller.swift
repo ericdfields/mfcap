@@ -64,16 +64,19 @@ enum SeedInstaller {
     /// once (guarded by the v2 marker). Idempotent and content-addressed;
     /// never touches entries the user already has. A fresh install took the
     /// copy path and set the marker there, so this is a no-op for it.
+    @discardableResult
     static func mergeIfNeeded(into library: Library,
-                              defaults: UserDefaults = .standard) async {
-        guard !defaults.bool(forKey: mergeMarker) else { return }
-        guard let seedLibrary = bundledSeedLibrary() else { return }
+                              defaults: UserDefaults = .standard) async -> Bool {
+        guard !defaults.bool(forKey: mergeMarker) else { return true }
+        guard let seedLibrary = bundledSeedLibrary() else { return false }
         do {
             let seed = try Library.open(at: seedLibrary)
             try await library.mergeBundle(from: seed)
             defaults.set(true, forKey: mergeMarker)
+            return true
         } catch {
             // Leave the marker unset so the merge retries on a later launch.
+            return false
         }
     }
 
@@ -92,6 +95,37 @@ enum SeedInstaller {
             return removed > 0
         } catch {
             return false   // retry next launch (marker stays unset)
+        }
+    }
+
+    /// One-time repair for libraries built before bank import stopped stamping
+    /// entry slots: every pack numbers its presets from slot 1, so all 17
+    /// claimed slots 0…31 and each import silently stole them from the last,
+    /// leaving `slotMap()` an incoherent mash that Sync then diffed the device
+    /// against. Clears only the claims an IMPORTED BANK already records at
+    /// that exact slot (loss-free — the arrangement is still in the bank that
+    /// owns it); a device capture's pin, and any deliberate pin no imported
+    /// bank explains, survive.
+    ///
+    /// Gated on `seedMerged`: the repair can only clear a claim an explaining
+    /// collection is present to explain, so running it before the seed merge
+    /// has landed those collections would mark the job done while leaving the
+    /// stale claims behind forever. It runs once the merge has actually
+    /// succeeded, and otherwise waits for a later launch.
+    static let slotClaimMarker = "MFSlotClaimsRepaired.v1"
+
+    @discardableResult
+    static func repairSlotClaimsIfNeeded(_ library: Library,
+                                         seedMerged: Bool,
+                                         defaults: UserDefaults = .standard) async -> Int {
+        guard seedMerged else { return 0 }   // retry once the merge lands
+        guard !defaults.bool(forKey: slotClaimMarker) else { return 0 }
+        do {
+            let cleared = try await library.clearCollectionSlotClaims()
+            defaults.set(true, forKey: slotClaimMarker)
+            return cleared
+        } catch {
+            return 0   // retry next launch (marker stays unset)
         }
     }
 

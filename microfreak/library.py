@@ -39,8 +39,13 @@ class LibraryEntry:
     name: str
     sha256: str
     meta_hex: str              # 18 hex chars, round-trips Preset.meta
-    slot: Optional[int]        # this library's desired device slot;
-                               # at most one entry per slot
+    slot: Optional[int]        # a DELIBERATE user pin: "when I send this
+                               # patch, it belongs in this slot". Set only by
+                               # assign_slot (and device-capture adds that
+                               # record where the bytes came from) — NEVER by
+                               # importing a bank or merging a bundle, whose
+                               # arrangement lives in a PresetCollection.
+                               # At most one entry per slot.
     added_at: str              # ISO 8601
     tags: Tuple[str, ...]
     category: Category = Category.UNCATEGORIZED   # editable; auto-filled from meta[7] on device import
@@ -209,9 +214,16 @@ class Library:
         if dedupe:
             for i, e in enumerate(self._entries):
                 if e.sha256 == sha and e.name == preset.name:
+                    new_slot = e.slot if e.slot is not None else slot
+                    # The new-entry path below clears competing claims; the
+                    # dedupe path must too, or two entries can claim one slot
+                    # and slot_map() would silently drop one.
+                    if e.slot is None and new_slot is not None:
+                        self._clear_slot_claims(new_slot)
+                        e = self._entries[i]     # list may have been rewritten
                     merged = dataclasses.replace(
                         e,
-                        slot=e.slot if e.slot is not None else slot,
+                        slot=new_slot,
                         tags=tuple(dict.fromkeys((*e.tags, *tags))),
                         favorite=e.favorite or bool(favorite),
                         category=(category if e.category == Category.UNCATEGORIZED
@@ -259,6 +271,48 @@ class Library:
             self._entries = [keep[k] for k in order]
             self._save()
         return removed
+
+    def clear_collection_slot_claims(self) -> int:
+        """One-time repair for libraries built before bank import stopped
+        stamping entry slots (every pack numbered from slot 1, so all of them
+        claimed 0..31 and each import silently stole those slots from the
+        last). Clears a claim ONLY when an IMPORTED_BANK collection already
+        records the same (sha256, name) at that same slot — i.e. only when the
+        arrangement being removed from the flat catalog is stored, intact, in
+        the imported bank that put it there. Loss-free by construction.
+        Idempotent. Returns the number of claims cleared.
+
+        The imported-bank restriction is what makes the promise below true.
+        Only `collection_from_bank` ever stamped a slot it did not own, so
+        only an IMPORTED_BANK collection can explain a claim that should not
+        exist. A DEVICE_SNAPSHOT collection records the very same (sha256,
+        name, slot) triples as the `import_snapshot` pins taken in the same
+        capture, so keying on every collection erased the ordinary
+        "Import Device… then Snapshot This Device as a Collection" flow's pins
+        wholesale; keying on imported banks alone leaves a device capture
+        alone, as documented.
+
+        Residual, unavoidable case: a deliberate `assign_slot` survives unless
+        an imported bank happens to place those exact (sha256, name) bytes at
+        that exact slot — the one state a legacy stamped claim is genuinely
+        indistinguishable from, because the legacy import created it."""
+        placed: Dict[int, Set[Tuple[str, str]]] = {}
+        for coll in self.collections():
+            if coll.provenance.kind is not ProvenanceKind.IMPORTED_BANK:
+                continue     # only a bank import ever stamped a slot it did
+                             # not own; a device capture is left alone
+            for slot, ref in coll.slots.items():
+                placed.setdefault(slot, set()).add((ref.sha256, ref.name))
+        cleared = 0
+        for i, e in enumerate(self._entries):
+            if e.slot is None:
+                continue
+            if (e.sha256, e.name) in placed.get(e.slot, ()):
+                self._entries[i] = dataclasses.replace(e, slot=None)
+                cleared += 1
+        if cleared:
+            self._save()
+        return cleared
 
     def set_category(self, entry_id: str, category: Category) -> LibraryEntry:
         return self._replace_entry(entry_id, category=category)
@@ -390,6 +444,22 @@ class Library:
             raise LibraryCorruptError(str(path), str(e)) from e
         return collection_from_json(data, path=str(path))
 
+    def store_preset(self, preset: Preset) -> PresetRef:
+        """Store a preset's blob content-addressed and return the PresetRef
+        that names it — WITHOUT creating a catalog entry.
+
+        The blob half of `add()`, exposed for callers that edit a collection
+        directly (adopting a device slot into an arrangement, say). Building
+        a `PresetRef` from bytes the store never received produces a ref that
+        `preset_for_ref` cannot resolve, which `plan_apply` then folds to SKIP
+        forever — a silent, permanent hole in the arrangement. Going through
+        here makes that impossible. Idempotent; safe to call for bytes already
+        held."""
+        sha = self._ensure_blob(preset.blob)
+        ref = PresetRef.of(preset)
+        assert ref.sha256 == sha
+        return ref
+
     def save_collection(self, coll: PresetCollection) -> None:
         cdir = self._collections_dir()
         cdir.mkdir(parents=True, exist_ok=True)
@@ -433,7 +503,9 @@ class Library:
             slots: Dict[int, PresetRef] = {}
             for slot, ref in coll.slots.items():
                 preset = other.preset_for_ref(ref)
-                entry = self.add(preset, slot=slot, dedupe=True)
+                # The merged collection below carries the arrangement; the
+                # catalog entry stays slot-less.
+                entry = self.add(preset, dedupe=True)
                 slots[slot] = PresetRef(sha256=entry.sha256, name=preset.name,
                                         meta_hex=ref.meta_hex)
             self.save_collection(dataclasses.replace(coll, slots=slots))
@@ -484,9 +556,11 @@ class Library:
 
     def collection_from_bank(self, items: Iterable[BankItem], *, name: str,
                              source: str) -> Tuple[PresetCollection, List[LibraryEntry]]:
-        """Store blobs, add one Uncategorized library entry per placed item,
-        build and save an IMPORTED_BANK collection. Skips items with no blob
-        or no slot. Returns (collection, added_entries)."""
+        """Store blobs, add one SLOT-LESS Uncategorized library entry per
+        placed item, build and save an IMPORTED_BANK collection. The
+        arrangement lives in the collection's `slots`; the flat catalog entry
+        claims nothing (UX spec §26.3). Skips items with no blob or no slot.
+        Returns (collection, added_entries)."""
         slots: Dict[int, PresetRef] = {}
         added: List[LibraryEntry] = []
         for item in items:
@@ -494,7 +568,10 @@ class Library:
                 continue     # empty/Init-only slot, or unplaceable filename
             meta = bytes(item.meta) if len(item.meta) == 9 else b"\x00" * 9
             preset = Preset(name=item.name, blob=item.blob, meta=meta)
-            entry = self.add(preset, slot=item.slot, dedupe=True)   # unique catalog
+            # The COLLECTION owns the arrangement (`slots` below); the library
+            # entry is a catalog record and carries no slot opinion.
+            # UX spec §26.3: "no slot claim".
+            entry = self.add(preset, dedupe=True)                   # unique catalog
             slots[item.slot] = PresetRef(sha256=entry.sha256, name=preset.name,
                                          meta_hex=meta.hex())
             added.append(entry)

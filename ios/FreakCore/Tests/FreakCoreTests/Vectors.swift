@@ -40,6 +40,10 @@ func str(_ c: [String: Any], _ key: String) -> String {
     c[key] as! String
 }
 
+func bool(_ c: [String: Any], _ key: String) -> Bool {
+    (c[key] as! NSNumber).boolValue
+}
+
 func seqByte(_ c: [String: Any]) -> UInt8 {
     UInt8(int(c, "seq"))
 }

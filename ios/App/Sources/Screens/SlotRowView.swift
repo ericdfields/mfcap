@@ -103,7 +103,9 @@ struct SlotRowView: View {
                     renamingSlot = nil
                 }
             } else {
-                nameLabel
+                // Served before the (now rigid) badges: the preset NAME is
+                // what the row exists to show.
+                nameLabel.layoutPriority(1)
             }
             Spacer(minLength: 8)
             badges

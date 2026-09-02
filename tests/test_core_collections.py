@@ -19,8 +19,8 @@ from microfreak import protocol as p
 from microfreak.collections import (ApplyOptions, PlanAction, PresetCollection,
                                      Provenance, ProvenanceKind, plan_apply)
 from microfreak.device import MicroFreak
-from microfreak.errors import (CollectionNotFoundError, OperationCancelledError,
-                               VerifyMismatchError)
+from microfreak.errors import (CollectionNotFoundError, IntegrityError,
+                               OperationCancelledError, VerifyMismatchError)
 from microfreak.library import BankItem, Library
 from microfreak.model import CancelToken, Preset, PresetRef
 from microfreak.transports.simulated import SimulatedMicroFreak
@@ -202,9 +202,94 @@ def run(work: Path) -> None:
     assert all(en.category is Category.UNCATEGORIZED for en in added)
     assert bcoll.slots[0].meta_hex == "00" * 9
     assert blib.preset_for_ref(bcoll.slots[1]).name == "Tokyo88 V3"
-    # one library entry per placed item, assigned to its slot
-    assert {en.slot for en in added} == {0, 1, 2}
-    print("PASS  collection_from_bank: 3 placed, empty skipped, Uncategorized entries")
+    # one library entry per placed item — SLOT-LESS. The COLLECTION owns the
+    # arrangement (asserted above as covered_slots() == (0, 1, 2)); the flat
+    # catalog carries no slot opinion, so the next pack cannot steal 0..2.
+    assert all(en.slot is None for en in added), [en.slot for en in added]
+    assert blib.slot_map() == {}
+    print("PASS  collection_from_bank: 3 placed, empty skipped, slot-less entries")
+
+    # a second pack covering the same slots leaves both arrangements intact
+    zbank2 = [(1, "Bass One", donor.peek(3).blob, "00" * 9, "A", 1),
+              (2, "Bass Two", donor.peek(4).blob, "00" * 9, "A", 2)]
+    zpath2 = work / "Naughty Bass.mfprojz"
+    _write_mfprojz(zpath2, zbank2)
+    items2 = [BankItem(slot=pr.slot, name=pr.name, meta=pr.meta, blob=pr.blob)
+              for pr in mbp_import.read_mfprojz(zpath2)]
+    bcoll2, added2 = blib.collection_from_bank(items2, name="Naughty Bass",
+                                               source=zpath2.name)
+    assert blib.slot_map() == {}, "no pack steals slots from the last"
+    assert bcoll.covered_slots() == (0, 1, 2)
+    assert bcoll2.covered_slots() == (0, 1)
+    assert blib.collection(bcoll.id).slots[0].name == "Voltage Forms"
+    print("PASS  two packs claiming slots 0..1 keep separate, intact arrangements")
+
+    # ---- the one-time repair, on a library built before the fix ------------
+    pinned = added[0]
+    blib.assign_slot(pinned.id, 0)         # explained by "Ambient Peaks"
+    blib.assign_slot(added2[1].id, 400)    # no collection places slot 400
+    assert len(blib.slot_map()) == 2
+    cleared = blib.clear_collection_slot_claims()
+    assert cleared == 1, cleared
+    assert list(blib.slot_map()) == [400], blib.slot_map()
+    assert blib.clear_collection_slot_claims() == 0, "idempotent"
+    # loss-free: the cleared arrangement is still in the collection that owns it
+    assert blib.collection(bcoll.id).slots[0].sha256 == pinned.sha256
+    assert blib.collection(bcoll.id).slots[0].name == pinned.name
+    print("PASS  clear_collection_slot_claims: loss-free, keeps a real pin, idempotent")
+
+    # ---- the repair leaves a DEVICE CAPTURE alone --------------------------
+    # The ordinary two-step flow ("Import Device..." then "Snapshot This Device
+    # as a Collection") records the same (sha256, name) at the same slot in a
+    # DEVICE_SNAPSHOT collection as import_snapshot pinned on the entries. A
+    # repair keyed on every collection wiped every one of those pins; only a
+    # bank import ever stamped a slot it did not own, so only an IMPORTED_BANK
+    # collection may explain a claim.
+    caplib = Library.create(work / "capturelib")
+    caplib.import_snapshot(snap)
+    cap_pins = sorted(e.slot for e in caplib.entries() if e.slot is not None)
+    assert cap_pins == list(range(8)), cap_pins
+    cap_coll = caplib.collection_from_snapshot(snap, name="Oct dump")
+    assert cap_coll.provenance.kind is ProvenanceKind.DEVICE_SNAPSHOT
+    assert cap_coll.covered_slots() == tuple(range(8))
+    assert caplib.clear_collection_slot_claims() == 0, \
+        "a device capture's pins are left alone"
+    assert sorted(e.slot for e in caplib.entries()
+                  if e.slot is not None) == list(range(8))
+    print("PASS  repair leaves device-capture pins alone (only banks explain)")
+
+    # ---- store_preset: adopting device bytes into a collection -------------
+    # "Update the collection from the device" edits a collection's slots map
+    # with bytes read off the synth. A PresetRef built straight from those
+    # bytes names a blob the store never received: preset_for_ref then raises,
+    # and plan_apply folds the slot to SKIP -- a silent, permanent hole in the
+    # arrangement. store_preset is the only correct way to mint that ref.
+    adoptlib = Library.create(work / "adoptlib")
+    adopted = Preset(name=snap.records[2].name, blob=snap.records[2].blob,
+                     meta=snap.records[2].meta)
+    dangling = PresetRef.of(adopted)                    # the WRONG way
+    assert not adoptlib.has_blob(dangling.sha256)
+    try:
+        adoptlib.preset_for_ref(dangling)
+        raise AssertionError("a ref to bytes never stored must not resolve")
+    except IntegrityError:
+        pass
+    stored = adoptlib.store_preset(adopted)             # the right way
+    assert stored == dangling, "same ref, blob now present"
+    assert adoptlib.has_blob(stored.sha256)
+    assert adoptlib.preset_for_ref(stored) == adopted
+    assert adoptlib.store_preset(adopted) == stored, "idempotent"
+    # store_preset does NOT catalogue: the arrangement is the collection's job
+    assert adoptlib.entries() == []
+    # and the adopted slot is now writable rather than silently skipped
+    adopt_coll = PresetCollection.new("Adopted",
+                                      Provenance(ProvenanceKind.MANUAL),
+                                      {2: stored})
+    adoptlib.save_collection(adopt_coll)
+    aplan = plan_apply(adopt_coll, snap)
+    assert aplan.write_count == 0 and aplan.skip_count == 8   # device already matches
+    assert adoptlib.preset_for_ref(adoptlib.collection(adopt_coll.id).slots[2])
+    print("PASS  store_preset: blob stored, ref resolvable, no catalog entry")
 
     # ---- plan_apply: the WRITE / SKIP / CLEAR decision table ----------------
     # collection identical to the device -> all SKIP, zero writes

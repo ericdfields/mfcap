@@ -159,7 +159,6 @@ final class AppModel {
     /// "Backup interrupted at slot 342 — Resume?" (UX §16.1).
     var backupInterruptedBanner: String?
     var restorePlanRequest: RestorePlanRequest?
-    var bulkApplyPlan: BulkApplyPlan?
     var sendPlanRun: BatchRunState?
     var restoreRun: BatchRunState?
     var slotPickerRequest: SlotPickerRequest?
@@ -170,6 +169,27 @@ final class AppModel {
     /// Loaded from disk at launch; the passive banner offers to put it back.
     /// Written only by the loan helpers in AppModelAudition.swift.
     var pendingAuditionLoan: AuditionLoan?
+
+    /// The Sync screen's chosen comparison baseline — a collection id. Sync
+    /// compares the device against ONE named arrangement, never against the
+    /// flat catalog (which has no slot opinion). App-layer only: persisted in
+    /// UserDefaults per device identity, no core or on-disk format change.
+    var syncBaselineID: String? {
+        didSet {
+            guard oldValue != syncBaselineID else { return }
+            let key = Self.syncBaselineKey(deviceIdentity)
+            if let syncBaselineID {
+                UserDefaults.standard.set(syncBaselineID, forKey: key)
+            } else {
+                UserDefaults.standard.removeObject(forKey: key)
+            }
+            recomputeSync()
+        }
+    }
+
+    static func syncBaselineKey(_ identity: DeviceIdentity) -> String {
+        "MFSyncBaseline.\(identity.stamp)"
+    }
 
     // Collections (UX addendum §26, §27).
     /// The create-from-device name prompt (NewCollectionSheet).
@@ -215,9 +235,17 @@ final class AppModel {
         // the init path because the merge needs the open Library actor.
         Task { [seedFromBundle] in
             if seedFromBundle, let lib = libraryModel.library {
-                await SeedInstaller.mergeIfNeeded(into: lib)
+                let merged = await SeedInstaller.mergeIfNeeded(into: lib)
                 // One-time repair for installs merged before dedup shipped.
                 await SeedInstaller.dedupeIfNeeded(lib)
+                // Order matters: dedupe first (merged duplicates collapse and
+                // their claims merge), THEN de-pollute the slot claims every
+                // pre-fix bank import stamped onto the flat catalog. The
+                // repair only runs once the merge has actually landed the
+                // collections that explain those claims — otherwise it would
+                // mark itself done over a library that has none of them.
+                await SeedInstaller.repairSlotClaimsIfNeeded(lib,
+                                                             seedMerged: merged)
                 await libraryModel.refresh()
             }
             await collectionsModel.refresh(from: libraryModel.library)
@@ -321,6 +349,10 @@ final class AppModel {
         deviceIdentity = identity
         freshness.adoptIdentity(identity)
         freshness.noteBackups(backups.items, identity: identity)
+        // The sync baseline is per identity: the collection you last compared
+        // (or applied) on this device.
+        syncBaselineID = UserDefaults.standard
+            .string(forKey: Self.syncBaselineKey(identity))
     }
 
     private func teardownDevice() {
@@ -330,9 +362,11 @@ final class AppModel {
         device = nil
         pacer = nil
         deviceIdentity = .none
-        // Identity switch drops the slot cache and diff; the library and
-        // backups are device-independent and kept (UX §11).
+        // Identity switch drops the slot cache, the diff and its baseline; the
+        // library and backups are device-independent and kept (UX §11). The
+        // baseline is re-read from defaults when an identity is adopted again.
         slots.reset()
+        syncBaselineID = nil
         sync.reset()
         undoStack.reset()
         freshness.reset()

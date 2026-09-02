@@ -240,7 +240,11 @@ struct CollectionsTests {
         #expect(added.count == 2)
         #expect(added.map(\.name) == ["Voltage Forms", "Voltage Forms"])
         #expect(added.allSatisfy { $0.category == .uncategorized && !$0.favorite })
-        #expect(added.map(\.slot) == [0, 1])
+        // The COLLECTION owns the arrangement; the flat catalog entries claim
+        // nothing (UX spec §26.3 "no slot claim"). Importing a second pack
+        // that also covers 0…1 must not steal this one's slots.
+        #expect(added.allSatisfy { $0.slot == nil })
+        #expect(await lib.slotMap().isEmpty)
         // empty meta became the zero meta (writable)
         #expect(coll.slots[1]?.metaHex == String(repeating: "00", count: 9))
         #expect(await lib.entries().count == 2)

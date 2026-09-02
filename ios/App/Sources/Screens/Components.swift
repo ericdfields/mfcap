@@ -59,6 +59,11 @@ struct SyncBadge: View {
     var body: some View {
         Text(label)
             .font(.caption2.weight(.medium))
+            // A closed set of five short words: pinning them makes the chip a
+            // RIGID participant, so an HStack shrinks the preset name column
+            // instead of squeezing (and hyphenating) the capsule.
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
             .background(color.opacity(0.15), in: Capsule())
@@ -69,8 +74,8 @@ struct SyncBadge: View {
     private var label: String {
         switch status {
         case .inSync: return "in sync"
-        case .deviceOnly: return "added"
-        case .libraryOnly: return "missing"
+        case .unlisted: return "unlisted"
+        case .baselineOnly: return "missing"
         case .differs: return "changed"
         case .empty: return "empty"
         }
@@ -79,8 +84,9 @@ struct SyncBadge: View {
     private var color: Color {
         switch status {
         case .inSync: return .green
-        case .deviceOnly: return .blue
-        case .libraryOnly: return .orange
+        // Informational, not a task: the collection simply says nothing here.
+        case .unlisted: return .secondary
+        case .baselineOnly: return .orange
         case .differs: return .purple
         case .empty: return .secondary
         }

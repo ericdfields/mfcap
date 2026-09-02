@@ -79,24 +79,32 @@ differs) — `report.verified` is never `False`, because a failed verify
 raises instead. `verify=False` is the explicit per-call opt-out
 (`report.verified` is then `None`).
 
-### Diff the device against a library
+### Diff the device against a collection
+
+The baseline is a **collection** — a named arrangement — never the whole
+library. The library is a flat catalog of unique patches and carries no slot
+opinion (`LibraryEntry.slot` is a deliberate user pin, not an arrangement),
+so diffing against it merges every imported bank into one incoherent mash.
 
 ```python
 from microfreak import Library, SlotStatus, diff
 
 lib = Library.open("library")
-snap = mf.snapshot()                 # names + blobs + hashes, all 512 slots
-d = diff(snap, lib)
+coll = lib.collection(collection_id)   # the baseline the user picked
+snap = mf.snapshot()                   # names + blobs + hashes, all 512 slots
+d = diff(snap, coll)
 
 for row in d.by_status(SlotStatus.DIFFERS):
     print(f"slot {row.slot}: device {row.device.name!r} != "
-          f"library {row.library.name!r}")
-for row in d.by_status(SlotStatus.DEVICE_ONLY):
-    print(f"slot {row.slot}: {row.device.name!r} not in library")
+          f"collection {row.baseline.name!r}")
+for row in d.by_status(SlotStatus.UNLISTED):
+    print(f"slot {row.slot}: {row.device.name!r} is not part of this collection")
 ```
 
 The diff is pure — it computes and never writes. Executing it is the caller
-composing `mf.write(...)` / `lib.add(...)` calls per row.
+composing `mf.write(...)` / `lib.add(...)` calls per row — or, for the whole
+arrangement at once, `plan_apply` + `apply_collection`, which is the SAME
+decision table (see below).
 
 ---
 
@@ -108,7 +116,7 @@ composing `mf.write(...)` / `lib.add(...)` calls per row.
 - `Preset`, `SlotRecord`, `DeviceSnapshot`, `TimingReport`, `WriteReport`,
   `ProgressEvent`, `ProgressFn`, `CancelToken`, `NameInfo`
 - `BackupSet`, `Library`, `LibraryEntry`
-- `diff`, `SyncDiff`, `SlotDiff`, `SlotStatus`
+- `diff`, `diff_baseline`, `SyncDiff`, `SlotDiff`, `SlotStatus`
 - the `analysis`, `protocol`, `sync` submodules
 - the constants `SLOTS`, `SLOTS_PER_BANK`, `BLOB_SIZE`, `CHUNK_SIZE`,
   `CHUNK_COUNT`, `META_LEN`, `NAME_LEN`, `DUPLICATE_THRESHOLD`
@@ -328,8 +336,13 @@ preset_back = lib.get(entry.id)        # re-hashed on every read
 ```
 
 - `LibraryEntry`: `id` (uuid4 hex, minted at `add()`, survives renames),
-  `name`, `sha256`, `meta_hex`, `slot` (this library's desired device slot,
-  or None), `added_at`, `tags`.
+  `name`, `sha256`, `meta_hex`, `slot` (a **deliberate user pin** — "when I
+  send this patch, it belongs in this slot" — or None), `added_at`, `tags`.
+- `slot` is set only by `assign_slot` and by device-capture adds that record
+  where the bytes came from. It is **never** set by importing a bank or
+  merging a bundle: a bank's arrangement lives in its `PresetCollection`, and
+  stamping it onto the flat catalog made every pack (all numbering from slot
+  1) steal slots 0..31 from the last one. It is not a sync baseline.
 - `add(preset, *, slot=None, tags=())` — the blob file is written only if
   absent (269 factory Inits cost one file); a new entry is always created,
   so two entries may share one blob sha under different names.
@@ -339,7 +352,28 @@ preset_back = lib.get(entry.id)        # re-hashed on every read
   references it.
 - Reads: `entries()`, `entry(id)`, `get(id) -> Preset` (every get
   re-hashes the blob against its filename — `IntegrityError` on rot),
-  `find_by_sha(sha)`, `has_blob(sha)`, `slot_map() -> {slot: entry}`.
+  `find_by_sha(sha)`, `has_blob(sha)`, `slot_map() -> {slot: entry}` (the
+  user's real pins only — never a diff baseline).
+- `store_preset(preset) -> PresetRef` — store a preset's blob
+  content-addressed and return the ref that names it, WITHOUT creating a
+  catalog entry. The blob half of `add()`, for callers that edit a
+  collection's `slots` directly (adopting a device slot into an arrangement).
+  A `PresetRef` built from bytes the store never received names a blob that
+  does not exist: `preset_for_ref` raises and `plan_apply` folds the slot to
+  `SKIP` forever, a silent permanent hole in the arrangement. Idempotent.
+- `clear_collection_slot_claims() -> int` — one-time repair for libraries
+  built before bank import stopped stamping slots. Clears a claim ONLY when an
+  **`IMPORTED_BANK`** collection already records that exact `(sha256, name)` at
+  that exact slot, so the arrangement being removed from the flat catalog is
+  still stored, byte for byte, in the bank that owns it. Loss-free by
+  construction, idempotent, local-only. The imported-bank restriction is load
+  bearing: only `collection_from_bank` ever stamped a slot it did not own,
+  while a `DEVICE_SNAPSHOT` collection records the very same
+  `(sha256, name, slot)` triples that `import_snapshot` legitimately pinned in
+  the same capture — so keying on every collection erased every device-capture
+  pin. A device capture is left alone. A deliberate `assign_slot` survives
+  unless an imported bank happens to place those exact bytes at that exact
+  slot, the one state a legacy stamped claim is indistinguishable from.
 - `import_snapshot(snapshot, *, skip_expendable=True, threshold=3)` —
   bulk-import a device snapshot. Requires kept blobs
   (`snapshot(read_blobs=True, keep_blobs=True)`). Each imported entry is
@@ -355,25 +389,44 @@ preset_back = lib.get(entry.id)        # re-hashed on every read
 ## Sync diff (`microfreak.sync`)
 
 ```python
-diff(snapshot, library, *, threshold=3) -> SyncDiff
+diff(snapshot, collection, *, threshold=3) -> SyncDiff
+diff_baseline(snapshot, baseline: Mapping[int, PresetRef], *, threshold=3) -> SyncDiff
 ```
 
-Pure and deterministic: no baseline state, computes and never writes. Per
-snapshot record, with `ex` = slot expendable within the snapshot and `lib`
-= library entry assigned to the slot:
+Pure and deterministic: no stored state, computes and never writes. The
+**baseline** is `{slot: PresetRef}` — normally a collection's `slots`. Per
+snapshot record, with `ex` = slot expendable within the snapshot and `b` =
+the baseline's ref for the slot:
 
 | condition | `SlotStatus` | meaning |
 |---|---|---|
-| no lib, ex | `EMPTY` | expendable on device, nothing assigned |
-| no lib, not ex | `DEVICE_ONLY` (`"added"`) | real preset on device, not in library |
-| lib, shas equal | `IN_SYNC` | |
-| lib, ex | `LIBRARY_ONLY` (`"missing"`) | assigned in library, device slot expendable |
+| no b, ex | `EMPTY` | expendable on device, collection silent here |
+| no b, not ex | `UNLISTED` (`"unlisted"`) | real preset on device, not part of this collection |
+| b, shas equal | `IN_SYNC` | |
+| b, ex | `BASELINE_ONLY` (`"missing"`) | the collection places a preset here, the device slot is expendable |
 | otherwise | `DIFFERS` (`"changed"`) | both real, contents differ |
+
+A slot the baseline says nothing about can only be `UNLISTED` or `EMPTY` —
+both mean "this collection has no opinion here", neither is actionable, and
+neither is `missing`. `missing` now means only "this collection places a
+preset here and the device slot is empty".
 
 Every considered record must carry a sha — a hash-less snapshot raises
 `ValueError`, because refusing beats guessing. `SyncDiff.slots` is one
-`SlotDiff(slot, status, device, library)` per snapshot record, ascending;
-`by_status(status)` filters. The core never auto-writes from a diff.
+`SlotDiff(slot, status, device, baseline, name_differs)` per snapshot record,
+ascending; `by_status(status)` filters; `unread_baseline_slots` lists baseline
+slots the snapshot never covered (unknown, never reported as missing).
+`name_differs` is true when the shas match but the names do not — never a
+status change (the diff is content-based), but it is what makes `plan_apply`
+WRITE.
+
+**One table, two halves.** `collections.plan_apply` is computed on
+`diff_baseline`: `IN_SYNC` without `name_differs` → `SKIP_UNCHANGED`;
+`IN_SYNC` (name only) / `DIFFERS` / `BASELINE_ONLY` → `WRITE`;
+`UNLISTED` / `EMPTY` → the `unlisted` policy. Expendability only splits the
+diff's *label* (`changed` vs `missing`), never the *action*, so the read-only
+diff and the write plan can never disagree. The core never auto-writes from
+a diff.
 
 ---
 

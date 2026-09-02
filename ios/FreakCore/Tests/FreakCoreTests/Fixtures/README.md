@@ -164,13 +164,21 @@ Cases dispatch on `"kind"`:
 
 ### `sync_diff.json` — the pure diff decision table
 
-`{name, threshold, records: [{slot, name, sha256}], library:
-[{slot, name, sha256}], expected: [{slot, status, status_name}] |
-expect_error: "ValueError", note}`. `threshold: null` means the default
-`DUPLICATE_THRESHOLD` = 3. Status strings: `in_sync`, `added`
-(DEVICE_ONLY), `missing` (LIBRARY_ONLY), `changed` (DIFFERS), `empty`.
-Includes a case producing all five statuses, a threshold override flipping
-expendability, and the hash-less snapshot refusal.
+`{name, threshold, records: [{slot, name, sha256}], baseline:
+[{slot, sha256, name, meta_hex}], expected: [{slot, status, status_name,
+name_differs}], unread_baseline_slots | expect_error: "ValueError", note}`.
+`threshold: null` means the default `DUPLICATE_THRESHOLD` = 3.
+
+The **baseline is a collection's slot map**, never a library: the library is a
+flat catalog with no slot opinion. Status strings: `in_sync`, `unlisted`
+(UNLISTED — the collection is silent about this slot), `missing`
+(BASELINE_ONLY — the collection places a preset here and the device slot is
+expendable), `changed` (DIFFERS), `empty`. Cases: all five statuses, a
+threshold override flipping expendability, `sparse_baseline` (the regression:
+a one-slot baseline over eight device slots reports zero `missing` and zero
+`changed`), `exact_match` (a device holding its collection is entirely
+`in_sync`), `name_only_differs` (`in_sync` + `name_differs: true` — what makes
+`plan_apply` WRITE), `unread_baseline_slots`, and the hash-less refusal.
 
 ### `expendable.json` — content-based expendability
 

@@ -15,7 +15,8 @@
           "pad"
         ],
         "category": "pad",
-        "favorite": true
+        "favorite": true,
+        "verdict": "unrated"
       },
       "expected": {
         "category": "pad",
@@ -39,7 +40,8 @@
           "sub"
         ],
         "category": "bass",
-        "favorite": false
+        "favorite": false,
+        "verdict": "unrated"
       },
       "expected": {
         "category": "bass",
@@ -60,7 +62,8 @@
         "added_at": "2026-09-01T00:00:00",
         "tags": [],
         "category": "uncategorized",
-        "favorite": false
+        "favorite": false,
+        "verdict": "unrated"
       },
       "expected": {
         "category": "uncategorized",

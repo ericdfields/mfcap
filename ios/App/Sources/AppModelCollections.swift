@@ -242,9 +242,11 @@ extension AppModel {
                 var item = OverwritePlan.Item(
                     target: slot, incomingName: ref.name,
                     incoming: .deviceSlot(slot), victim: victimFacts(slot))
+                // `presetForRef` reads the library blob store only — no
+                // backup is consulted on this path, so do not claim one was.
                 item.disabledReason =
-                    "bytes not in the library or any backup — re-import or "
-                    + "re-snapshot"
+                    "bytes aren't in your library — re-import the bank or "
+                    + "re-snapshot the device"
                 items.append(item)
             }
         }
@@ -355,6 +357,9 @@ extension AppModel {
                                                presetBySlot: presetBySlot,
                                                collectionName: name)
                 }
+                // The collection you just put on the device is the honest
+                // thing to compare it against from now on.
+                self.syncBaselineID = applyPlan.collectionID
                 self.recomputeSync()
                 self.toasts.show("Switched to '\(name)' — \(reports.count) "
                     + "slots written, all verified")

@@ -25,7 +25,7 @@ struct SyncSlotDetailView: View {
                     }
                 }
                 deviceSection(row)
-                librarySection(row)
+                baselineSection(row)
                 notesSection(row)
                 actionsSection(row)
             } else {
@@ -74,20 +74,37 @@ struct SyncSlotDetailView: View {
         }
     }
 
-    private func librarySection(_ row: SlotDiff) -> some View {
-        Section("In the library") {
-            if let entry = row.library {
+    private var baselineName: String {
+        model.sync.baseline?.name ?? "the collection"
+    }
+
+    private func baselineSection(_ row: SlotDiff) -> some View {
+        Section("In '\(baselineName)'") {
+            if let ref = row.baseline {
                 LabeledContent("Name") {
-                    Button(entry.name) {
-                        model.detail = .libraryEntry(entry.id)
+                    // The catalog is keyed by CONTENT, not by slot claims:
+                    // link out only when the library actually holds these bytes.
+                    if let entry = model.libraryModel
+                        .entriesSharing(sha256: ref.sha256).first {
+                        Button(ref.name) {
+                            model.detail = .libraryEntry(entry.id)
+                        }
+                    } else {
+                        Text(ref.name)
                     }
                 }
                 LabeledContent("SHA-256") {
-                    Text(Format.shaPrefix(entry.sha256))
+                    Text(Format.shaPrefix(ref.sha256))
                         .font(.caption.monospaced())
                 }
+                if model.libraryModel.entriesSharing(sha256: ref.sha256).isEmpty {
+                    Text("These bytes are not in your library.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             } else {
-                Text("No library entry claims this slot.")
+                Text("'\(baselineName)' says nothing about this slot — it is "
+                     + "not part of this arrangement.")
                     .foregroundStyle(.secondary)
             }
         }
@@ -95,13 +112,12 @@ struct SyncSlotDetailView: View {
 
     @ViewBuilder
     private func notesSection(_ row: SlotDiff) -> some View {
-        if row.status == .inSync,
-           let device = row.device, let entry = row.library,
-           device.name != entry.name {
+        if row.status == .inSync, row.nameDiffers {
             Section {
                 Label("Names differ; contents identical. A name difference "
                       + "never changes sync status — the diff is "
-                      + "content-based.",
+                      + "content-based — but it is still a difference: "
+                      + "'Make Device Match' rewrites this slot.",
                       systemImage: "character.cursor.ibeam")
                     .font(.callout)
                     .foregroundStyle(.secondary)
@@ -114,24 +130,46 @@ struct SyncSlotDetailView: View {
             let deviceReady = model.connection.hasDevice
                 && model.operations.exclusiveLongOp == nil
             switch row.status {
-            case .deviceOnly:
-                Button("Import to Library (instant — bytes already on disk)") {
-                    model.syncImportRow(row)
+            case .unlisted:
+                Button("Save to Library (instant — bytes already on disk)") {
+                    model.syncSaveRowToLibrary(row)
                 }
-            case .libraryOnly:
+                Button("Add to '\(baselineName)' at slot \(slot.display) "
+                       + "(local — no device write)") {
+                    model.syncAdoptRowIntoBaseline(row)
+                }
+            case .baselineOnly:
                 Button("Send to Device (verified write)") {
-                    model.syncSendRow(row)
+                    model.syncSendBaselineRow(row)
                 }
                 .disabled(!deviceReady)
             case .differs:
-                Button("Push Library → Device (verified write)") {
-                    model.syncPushRow(row)
+                Button("Send '\(baselineName)'s Preset to Device "
+                       + "(verified write)") {
+                    model.syncSendBaselineRow(row)
                 }
                 .disabled(!deviceReady)
-                Button("Pull Device → Library (instant; the new entry takes "
-                       + "the slot claim, the old entry is kept)") {
-                    model.syncPullRow(row)
+                Button("Update '\(baselineName)' from Device (local — the "
+                       + "collection adopts what is on the synth)") {
+                    model.syncAdoptRowIntoBaseline(row)
                 }
+                Button("Save Device Preset to Library (instant)") {
+                    model.syncSaveRowToLibrary(row)
+                }
+            case .inSync where row.nameDiffers:
+                // Contents match, names do not. `planApply` WRITES this slot,
+                // so the screen must offer the same two resolutions rather
+                // than presenting it as settled.
+                Button("Send '\(baselineName)'s Name to Device "
+                       + "(verified write)") {
+                    model.syncSendBaselineRow(row)
+                }
+                .disabled(!deviceReady)
+                Button("Update '\(baselineName)' from Device (local — the "
+                       + "collection adopts the device's name)") {
+                    model.syncAdoptRowIntoBaseline(row)
+                }
+                Button("Open in browser") { model.detail = .slot(slot) }
             case .inSync, .empty:
                 Button("Open in browser") { model.detail = .slot(slot) }
             }

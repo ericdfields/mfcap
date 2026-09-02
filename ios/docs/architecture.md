@@ -511,7 +511,7 @@ public struct LibraryEntry: Sendable, Equatable, Identifiable {
     public let name: String
     public let sha256: String
     public let metaHex: String         // 18 hex chars, round-trips Preset.meta
-    public let slot: Int?              // desired device slot; at most one entry per slot
+    public let slot: Int?              // a DELIBERATE user pin; never set by bank import
     public let addedAt: String         // ISO 8601
     public let tags: [String]
 }
@@ -530,7 +530,7 @@ public final class Library {           // deliberately NOT Sendable — single-w
                                                                 // "sha256 mismatch (bit rot?)")
     public func findBySha(_ sha256: String) -> [LibraryEntry]
     public func hasBlob(_ sha256: String) -> Bool
-    public func slotMap() -> [Int: LibraryEntry]
+    public func slotMap() -> [Int: LibraryEntry]   // the user's real pins; NOT a sync baseline
     // writes (every mutation ends in an atomic index save)
     @discardableResult
     public func add(_ preset: Preset, slot: Int? = nil, tags: [String] = []) throws -> LibraryEntry
@@ -538,6 +538,9 @@ public final class Library {           // deliberately NOT Sendable — single-w
     public func renameEntry(id: String, name: String) throws -> LibraryEntry
     public func remove(id: String) throws        // blob file deleted only when unreferenced
     public func assignSlot(id: String, slot: Int?) throws
+    @discardableResult
+    public func storePreset(_ preset: Preset) throws -> PresetRef  // blob-only; no catalog entry
+    public func clearCollectionSlotClaims() throws -> Int   // one-time, loss-free repair
     // import
     @discardableResult
     public func importSnapshot(_ snapshot: DeviceSnapshot,
@@ -547,30 +550,38 @@ public final class Library {           // deliberately NOT Sendable — single-w
 }
 ```
 
-Semantics verbatim from `library.py`: on-disk `index.json {"schema": 1, "entries": [...]}` + `blobs/<sha256>.bin` (content-addressed; 269 Inits cost one file); `add` writes the blob iff absent and always creates a new entry (two entries may share a sha); assigning a slot clears any other entry's claim; `importSnapshot` requires kept blobs (`.snapshotMissingBlobs` otherwise), skips expendable slots when asked, skips `meta == nil` records (failed name read — cannot round-trip), skips existing `(sha256, name)` pairs, assigns each imported entry its source slot, returns entries actually added. Atomic index writes; single-writer assumption; no cross-process locking. Entry JSON keys exactly `id, name, sha256, meta_hex, slot (explicit null), added_at, tags`.
+Semantics verbatim from `library.py`: on-disk `index.json {"schema": 1, "entries": [...]}` + `blobs/<sha256>.bin` (content-addressed; 269 Inits cost one file); `add` writes the blob iff absent and always creates a new entry (two entries may share a sha); assigning a slot clears any other entry's claim (the `dedupe:` merge path included). `slot` is a DELIBERATE user pin — set by `assignSlot` and by device-capture adds, NEVER by `collectionFromBank` / `mergeBundle`, whose arrangement lives in the `PresetCollection`; `clearCollectionSlotClaims()` is the one-time repair for libraries built before that rule, clearing a claim only when an **`.importedBank`** collection already records the same `(sha256, name)` at that slot (loss-free, idempotent) — a `.deviceSnapshot` collection records the same triples `importSnapshot` legitimately pinned, so a device capture is left alone. `storePreset(_:)` stores a preset's blob content-addressed and returns its `PresetRef` without creating a catalog entry — the only correct way to mint a ref for bytes a caller is writing straight into a collection's `slots` (a ref to bytes the store never received cannot be resolved, and `planApply` folds that slot to SKIP forever). `importSnapshot` requires kept blobs (`.snapshotMissingBlobs` otherwise), skips expendable slots when asked, skips `meta == nil` records (failed name read — cannot round-trip), skips existing `(sha256, name)` pairs, assigns each imported entry its source slot, returns entries actually added. Atomic index writes; single-writer assumption; no cross-process locking. Entry JSON keys exactly `id, name, sha256, meta_hex, slot (explicit null), added_at, tags, category, favorite, verdict` — both writers always emit all ten (readers default the last three, so an older index still loads; an index missing one was NOT written by either core).
 
 ### 3.9 `Sync.swift`
 
 ```swift
 public enum SlotStatus: String, Sendable, CaseIterable {
-    case inSync = "in_sync", deviceOnly = "added", libraryOnly = "missing",
+    case inSync = "in_sync", unlisted = "unlisted", baselineOnly = "missing",
          differs = "changed", empty = "empty"
 }
 public struct SlotDiff: Sendable {
     public let slot: Int
     public let status: SlotStatus
-    public let device: SlotRecord         // always the snapshot record (tightened; see §10)
-    public let library: LibraryEntry?
+    public let device: SlotRecord?        // the snapshot record for this slot
+    public let baseline: PresetRef?       // what the chosen collection places here
+    public let nameDiffers: Bool          // shas equal, names differ
 }
 public struct SyncDiff: Sendable {
     public let slots: [SlotDiff]          // one per snapshot record, ascending
-    public func by(status: SlotStatus) -> [SlotDiff]
+    public let unreadBaselineSlots: [Int] // baseline slots the snapshot missed
+    public func byStatus(_ status: SlotStatus) -> [SlotDiff]
 }
-public func diff(_ snapshot: DeviceSnapshot, _ library: Library,
-                 threshold: Int = FreakProtocol.duplicateThreshold) throws -> SyncDiff
+public func computeDiff(snapshot: DeviceSnapshot, baseline: [Int: PresetRef],
+                        threshold: Int = Wire.duplicateThreshold) throws -> SyncDiff
+public func computeDiff(snapshot: DeviceSnapshot, collection: PresetCollection,
+                        threshold: Int = Wire.duplicateThreshold) throws -> SyncDiff
 ```
 
-Pure and deterministic; throws `.snapshotMissingHashes` if any considered record lacks a sha (refusing beats guessing). Status table exactly as `sync.py`: no lib & expendable → `.empty`; no lib & not → `.deviceOnly`; lib & shas equal → `.inSync`; lib & expendable → `.libraryOnly`; else `.differs`. The core never auto-writes from a diff — executing it is the caller composing `write`/`add` calls per row. `diff` is synchronous and runs wherever the `Library` lives.
+The **baseline is a collection**, never the library: the library is a flat catalog of unique patches with no slot opinion, so diffing against it merged every imported bank into one incoherent mash.
+
+Pure and deterministic; throws `.snapshotMissingHashes` if any considered record lacks a sha (refusing beats guessing). Status table exactly as `sync.py`: no b & expendable → `.empty`; no b & not → `.unlisted`; b & shas equal → `.inSync`; b & expendable → `.baselineOnly`; else `.differs`. A slot the baseline is silent about can only be `.unlisted` or `.empty` — never `missing`. The core never auto-writes from a diff — executing it is the caller composing `write`/`add` calls per row, or `planApply` for the whole arrangement.
+
+**One decision table.** `planApply` (§3.11) is computed on `computeDiff`: `.inSync && !nameDiffers` → SKIP; `.inSync` (name only) / `.differs` / `.baselineOnly` → WRITE; `.unlisted` / `.empty` → the unlisted policy. Expendability splits only the diff's label (`changed` vs `missing`), never the action, so the Sync screen and Apply can never disagree.
 
 ### 3.10 `Analysis.swift`
 
@@ -643,7 +654,7 @@ Required behaviors (each is a `SimulatedFidelityTests` case):
 | `SlotRecord`, `DeviceSnapshot`, `TimingReport`, `WriteReport`, `ProgressEvent`, `ProgressFn`, `CancelToken`, `NameInfo`, `Frame` | same names, §3.2/§3.1 |
 | `BackupSet` | `struct BackupSet` |
 | `Library`, `LibraryEntry` | `final class Library`, `struct LibraryEntry` |
-| `diff`, `SyncDiff`, `SlotDiff`, `SlotStatus` | same names, §3.9 |
+| `diff` / `diff_baseline`, `SyncDiff`, `SlotDiff`, `SlotStatus` | `computeDiff(snapshot:baseline:)` / `(snapshot:collection:)`, same value types, §3.9 |
 | `analysis.sha_census/find_expendable/pick_scratch_slot` | `Analysis.shaCensus/findExpendable/pickScratchSlot` |
 | `protocol.*` constants & functions | `FreakProtocol.*` (§3.1; `is_chunk/is_last_chunk/is_ack` → `Frame.isChunk/.isLastChunk/.isAck`) |
 | exceptions | `FreakError` (§3.3) |
@@ -776,7 +787,7 @@ Screens/
   SlotGridView.swift             # 512-slot browser (names-only refresh is interactive: ~1 ms/slot)
   PresetDetailView.swift         # read/write/rename one slot; verified-write results
   LibraryView.swift              # entries, tags, rename, assign slot, remove
-  SyncView.swift                 # diff table by SlotStatus; per-row push/pull actions
+  SyncView.swift                 # device vs. ONE chosen baseline collection; diff table by SlotStatus
                                  # (each an explicit write/add composed by the user)
   BackupsView.swift              # run/resume backup (progress + median ETA), restore
   SettingsView.swift             # port picker (listEndpoints), demo toggle, timeouts display
@@ -882,7 +893,7 @@ The Swift runner (`VectorTests`) enumerates every `*.json` in the directory, dis
 6. **`write_burst.json`** — kind `write_burst`. The end-to-end host frame stream for one verified-write sequence, captured from a **fresh** reference `Session` (seq counter starting at 0 → first emitted 1) over a **non-lagged** sim that acks everything. Case: `{"id", "slot", "name", "meta_hex", "blob_hex", "expect_frames_hex": [151 strings]}` — frame 1 (0x19 seq 1), frame 2 (long 0x52 seq 2), frame 3 (short 0x52 seq 3), frame 4 (go seq 0), 146 chunks (seq 1..127, 0, 1..18), frame 7 (0x19 seq 4). Required: one case below slot 384 and one at ≥ 384. Swift asserts by driving `FreakSession.writePreset` over a scripted always-ack transport and comparing its outbound log.
 7. **`sim_factory.json`** — kind `sim_factory`. Pins cross-language sim fidelity: `{"seed": 0, "init_copies": 269, "slots": 512, "expect": {"init_blob_sha256": str, "init_count": 269, "records": [{"slot", "name", "sha256", "meta_hex"}, …]}}` with records for slots 0, 1, 127, 128, 242, 243, 383, 384, 511 (bank, 0x10-bit, and payload[9]-flip boundaries).
 8. **`analysis.json`** — kind `analysis`. Case: `{"id", "records": [{"slot", "name": str|null, "sha256": str|null}], "threshold": int, "expect_expendable": [int], "scratch": {"prefer_from": int, "exclude": [int], "expect": int|null} | null}`. Required: blank-name rule, whitespace-only name, threshold boundary (2 copies vs 3), `name: null` never expendable, `sha: null` never expendable, "Init"-named unique blob NOT expendable, scratch preference ≥ 500 and fallback.
-9. **`sync_diff.json`** — kind `sync_diff`. Case: `{"id", "records": [{"slot", "name", "sha256"}], "library": [{"id", "slot", "name", "sha256"}], "threshold": int, "expect": [{"slot", "status": "in_sync"|"added"|"missing"|"changed"|"empty"}]}` — at least one case producing all five statuses.
+9. **`sync_diff.json`** — kind `sync_diff`. The baseline is a **collection's slot map**, never the library: the flat catalog carries no slot opinion, so diffing against it merged every imported bank into one incoherent mash. Case: `{"name", "records": [{"slot", "name", "sha256"}], "baseline": [{"slot", "sha256", "name", "meta_hex"}], "threshold": int|null, "expected": [{"slot", "status": "in_sync"|"unlisted"|"missing"|"changed"|"empty", "status_name", "name_differs": bool}], "unread_baseline_slots": [int], "note"}` — at least one case producing all five statuses, plus the error case (`"records_missing_hash": true` → `"expected_error": "snapshot_missing_hashes"`). There is no `"added"` status: a slot the baseline is silent about is `unlisted` (or `empty` when expendable), never `missing`. Generated by `tools/gen_vectors.py` (`gen_sync_diff`); mirrored in `swift-architecture.md` §"sync_diff.json".
 
 ---
 

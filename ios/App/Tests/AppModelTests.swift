@@ -420,3 +420,243 @@ final class AuditionLoanTests: XCTestCase {
         XCTAssertNil(model.auditionBlockReason(for: SlotID(511)))
     }
 }
+
+// ===================================================== sync baseline (§17)
+
+/// Sync compares the device against ONE collection the user chose. These pin
+/// the state machine and the two properties the library rows read, all
+/// offline: no device, no MIDI, no hardware.
+@MainActor
+final class SyncBaselineTests: XCTestCase {
+
+    private func record(_ slot: Int, _ name: String, _ sha: String) -> SlotRecord {
+        SlotRecord(slot: slot, name: name, sha256: sha, meta: nil, blob: nil)
+    }
+
+    private func snapshot(_ records: [SlotRecord]) -> DeviceSnapshot {
+        DeviceSnapshot(takenAt: "2026-09-01T00:00:00", records: records,
+                       timing: TimingReport(totalSeconds: 0, perSlotSeconds: 0,
+                                            nameMsMedian: nil, dumpMsMedian: nil))
+    }
+
+    private func ref(_ name: String, _ sha: String) -> PresetRef {
+        PresetRef(sha256: sha, name: name,
+                  metaHex: String(repeating: "0", count: 18))
+    }
+
+    private func collection(_ name: String,
+                            _ slots: [Int: PresetRef]) -> PresetCollection {
+        PresetCollection.new(name: name,
+                             provenance: Provenance(kind: .importedBank,
+                                                    source: "\(name).mfprojz"),
+                             slots: slots)
+    }
+
+    /// No baseline → the picker state, and never a diff. This is the state a
+    /// fresh install lands in, so it has to carry real weight.
+    func testNoBaselineIsTheExplanatoryStateNotADiff() {
+        let sync = SyncModel()
+        sync.recompute(snapshot: snapshot([record(0, "A", "sha-a")]),
+                       baseline: nil, provenance: nil)
+        XCTAssertEqual(sync.state, .needsBaseline)
+        XCTAssertNil(sync.diff)
+        XCTAssertNil(sync.allInSyncSummary)
+        XCTAssertTrue(sync.badges.isEmpty)
+    }
+
+    /// The reported symptom, inverted: a 2-slot pack against a full device
+    /// used to read "changed 148 / missing 268". It must now read as in sync,
+    /// with the rest simply outside the collection.
+    func testDeviceMatchingItsCollectionReadsAsInSync() {
+        let records = (0..<8).map { record($0, "P\($0)", "sha-\($0)") }
+        let coll = collection("Ambient Peaks",
+                              [0: ref("P0", "sha-0"), 1: ref("P1", "sha-1")])
+        let sync = SyncModel()
+        sync.recompute(snapshot: snapshot(records), baseline: coll,
+                       provenance: nil)
+        XCTAssertEqual(sync.state, .ready)
+        XCTAssertEqual(sync.counts[.differs] ?? 0, 0)
+        XCTAssertEqual(sync.counts[.baselineOnly] ?? 0, 0)
+        XCTAssertEqual(sync.counts[.inSync], 2)
+        XCTAssertEqual(sync.counts[.unlisted], 6)
+        // Default filter shows only real disagreements — so: no rows at all.
+        XCTAssertTrue(sync.visibleRows.isEmpty)
+        let summary = sync.allInSyncSummary ?? ""
+        XCTAssertTrue(summary.contains("Device matches 'Ambient Peaks'"), summary)
+        XCTAssertTrue(summary.contains("6 slots aren't part"), summary)
+        // Slots the collection is silent about are never badged in the browser.
+        XCTAssertEqual(Set(sync.badges.keys), [0, 1])
+    }
+
+    /// Library rows key their hint on CONTENT: the catalog has no slot claim
+    /// to look up any more.
+    func testLibraryHintsAreKeyedByContentNotBySlotClaim() {
+        let records = [record(0, "P0", "sha-0"), record(1, "Changed", "sha-x")]
+        let coll = collection("Pack", [0: ref("P0", "sha-0"),
+                                       1: ref("P1", "sha-1")])
+        let sync = SyncModel()
+        sync.recompute(snapshot: snapshot(records), baseline: coll,
+                       provenance: nil)
+        XCTAssertEqual(sync.statusBySha["sha-0"], .inSync)
+        XCTAssertEqual(sync.statusBySha["sha-1"], .differs)
+        let entry = LibraryEntry(id: "e0", name: "P0", sha256: "sha-0",
+                                 metaHex: String(repeating: "0", count: 18),
+                                 slot: nil, addedAt: "", tags: [])
+        XCTAssertEqual(LibraryRowView.syncHint(for: entry,
+                                               statusBySha: sync.statusBySha,
+                                               baselineName: "Pack"),
+                       "in sync in 'Pack'")
+    }
+
+    /// A device-side RENAME is a real disagreement: `planApply` writes that
+    /// slot. The diff keeps `.inSync` (status is content-based, by core
+    /// contract), so the screen has to surface it anyway — this is the exact
+    /// screen-vs-plan disagreement the sync redesign claims is impossible.
+    /// Before the fix the row was hidden by the default filter AND the green
+    /// "Device matches" all-clear fired on top of it.
+    func testANameOnlyDifferenceIsVisibleAndSuppressesTheAllClear() {
+        // Byte-identical to the baseline except slot 1, renamed on the synth.
+        let records = [record(0, "P0", "sha-0"), record(1, "RENAMED", "sha-1")]
+        let coll = collection("Ambient Peaks", [0: ref("P0", "sha-0"),
+                                                1: ref("P1", "sha-1")])
+        let sync = SyncModel()
+        sync.recompute(snapshot: snapshot(records), baseline: coll,
+                       provenance: nil)
+        XCTAssertEqual(sync.state, .ready)
+        // Content-based status is untouched: both rows are still .inSync.
+        XCTAssertEqual(sync.counts[.inSync], 2)
+        XCTAssertEqual(sync.counts[.differs] ?? 0, 0)
+
+        // …but the row is actionable, visible by default, and rides the
+        // .differs chip, whose count matches the rows it reveals.
+        XCTAssertEqual(sync.actionableRows.map(\.slot), [1])
+        XCTAssertEqual(sync.visibleRows.map(\.slot), [1])
+        XCTAssertEqual(sync.filterCount(.differs), 1)
+        XCTAssertEqual(sync.filterCount(.inSync), 1)
+
+        // No green all-clear while Apply would write a slot.
+        XCTAssertNil(sync.allInSyncSummary)
+
+        // Turning the .differs chip off still hides it, like any other row.
+        sync.visibleStatuses = [.baselineOnly]
+        XCTAssertTrue(sync.visibleRows.isEmpty)
+    }
+
+    /// The summary's "aren't part of this collection" count must not subtract
+    /// baseline slots the snapshot never read — those are reported separately
+    /// in the very next sentence, so subtracting them contradicts it.
+    func testOutsideCountExcludesUnreadBaselineSlots() {
+        // Read slots 0…3; the collection also defines 400 and 401 (unread).
+        let records = (0..<4).map { record($0, "P\($0)", "sha-\($0)") }
+        let coll = collection("Pack", [0: ref("P0", "sha-0"),
+                                       1: ref("P1", "sha-1"),
+                                       400: ref("P400", "sha-400"),
+                                       401: ref("P401", "sha-401")])
+        let sync = SyncModel()
+        sync.recompute(snapshot: snapshot(records), baseline: coll,
+                       provenance: nil)
+        XCTAssertEqual(sync.diff?.unreadBaselineSlots, [400, 401])
+        let summary = sync.allInSyncSummary ?? ""
+        // 4 read slots, 2 of them covered by the collection -> 2 outside.
+        // The old arithmetic (4 - 4) reported 0 and dropped the sentence.
+        XCTAssertTrue(summary.contains("2 slots aren't part"), summary)
+        XCTAssertTrue(summary.contains("2 slots this collection defines "
+                                       + "weren't read"), summary)
+        XCTAssertTrue(summary.contains("2 of 4 slots in sync"), summary)
+    }
+
+    /// A hashed snapshot is still required — refusing beats guessing.
+    func testNoSnapshotIsTheReadCTA() {
+        let sync = SyncModel()
+        sync.recompute(snapshot: nil, baseline: collection("Pack", [:]),
+                       provenance: nil)
+        XCTAssertEqual(sync.state, .needsSnapshot)
+        XCTAssertNil(sync.diff)
+    }
+}
+
+/// The shipped seed library must carry NO slot claims: the arrangement lives
+/// in its 17 collections, and the flat catalog is a pure content catalog.
+///
+/// "No slot claims" alone is a weak guard — a regeneration that silently drops
+/// a whole bank satisfies it. These also pin the seed's SHAPE (17 collections,
+/// 966 unique blobs), the index's key set, and the invariant that binds the
+/// two halves together: every collection ref resolves to a real blob.
+final class SeedLibraryShapeTests: XCTestCase {
+    private static let expectedEntries = 966
+    private static let expectedCollections = 17
+
+    private func seedRoot() throws -> URL {
+        guard let seed = SeedInstaller.bundledSeedLibrary() else {
+            throw XCTSkip("SeedBanks not in this test bundle")
+        }
+        return seed
+    }
+
+    private func indexEntries(_ seed: URL) throws -> [[String: Any]] {
+        let raw = try Data(contentsOf: seed.appendingPathComponent("index.json"))
+        let object = try JSONSerialization.jsonObject(with: raw) as! [String: Any]
+        return object["entries"] as! [[String: Any]]
+    }
+
+    func testShippedSeedIndexHasNoSlotClaims() throws {
+        let entries = try indexEntries(try seedRoot())
+        XCTAssertFalse(entries.isEmpty)
+        let claiming = entries.filter { !($0["slot"] is NSNull) && $0["slot"] != nil }
+        XCTAssertEqual(claiming.count, 0,
+                       "the seed catalog must carry no slot opinion")
+    }
+
+    /// The acceptance criteria for the regenerated seed, asserted instead of
+    /// checked by hand: a run that drops a bank changes these numbers.
+    func testShippedSeedHasTheExpectedCensus() throws {
+        let seed = try seedRoot()
+        let entries = try indexEntries(seed)
+        XCTAssertEqual(entries.count, Self.expectedEntries)
+        let shas = Set(entries.compactMap { $0["sha256"] as? String })
+        XCTAssertEqual(shas.count, Self.expectedEntries,
+                       "the catalog is a set of UNIQUE patches")
+
+        let fm = FileManager.default
+        let blobs = try fm.contentsOfDirectory(
+            atPath: seed.appendingPathComponent("blobs").path)
+            .filter { $0.hasSuffix(".bin") }
+        XCTAssertEqual(blobs.count, Self.expectedEntries)
+
+        let collections = try fm.contentsOfDirectory(
+            atPath: seed.appendingPathComponent("collections").path)
+            .filter { $0.hasSuffix(".json") }
+        XCTAssertEqual(collections.count, Self.expectedCollections)
+    }
+
+    /// The index must be exactly what the cores' index writer emits — the
+    /// shipped artifact once had `verdict` stripped from all 966 entries,
+    /// which is only possible if it was hand-edited after generation.
+    func testShippedSeedIndexCarriesEveryKeyTheCoresWrite() throws {
+        let expected: Set<String> = ["id", "name", "sha256", "meta_hex", "slot",
+                                     "added_at", "tags", "category", "favorite",
+                                     "verdict"]
+        for entry in try indexEntries(try seedRoot()) {
+            XCTAssertEqual(Set(entry.keys), expected,
+                           "entry \(entry["id"] ?? "?") is not what saveIndex writes")
+        }
+    }
+
+    /// Every collection ref must name a blob the store actually holds — the
+    /// binding that makes "Make Device Match '<name>'" able to write anything.
+    func testEverySeedCollectionRefResolvesToABlob() async throws {
+        let seed = try seedRoot()
+        let library = try Library.open(at: seed)
+        let collections = try await library.collections()
+        XCTAssertEqual(collections.count, Self.expectedCollections)
+        var refs = 0
+        for coll in collections {
+            for (_, ref) in coll.slots {
+                _ = try await library.presetForRef(ref)   // throws on a hole
+                refs += 1
+            }
+        }
+        XCTAssertGreaterThanOrEqual(refs, Self.expectedEntries,
+                                    "every catalogued patch is placed somewhere")
+    }
+}

@@ -241,7 +241,7 @@ rule, failed-name-read + mass-duplicated blob (still expendable via content), `"
                 { "slot": 4, "status": "empty" } ] }
 ```
 
-`status` strings are the Python `SlotStatus` values: `"in_sync" | "added" | "missing" | "changed" | "empty"`.
+`status` strings are the Python `SlotStatus` values: `"in_sync" | "unlisted" | "missing" | "changed" | "empty"`. The case shape is `{ "records", "baseline": [{slot, sha256, name, meta_hex}], "expected": [{slot, status, status_name, name_differs}], "unread_baseline_slots" }` — the baseline is a collection's slot map, never a library.
 Must cover all five states plus the error case `{ "id", "records_missing_hash": true, … }` variant:
 a case whose records include a `sha256: null` and whose only expectation is
 `"expected_error": "snapshot_missing_hashes"`.
@@ -1066,7 +1066,7 @@ public struct LibraryEntry: Sendable, Equatable, Identifiable {
     public let name: String
     public let sha256: String
     public let metaHex: String       // 18 hex chars, round-trips Preset.meta
-    public let slot: Int?            // desired device slot; at most one entry per slot
+    public let slot: Int?            // a DELIBERATE user pin; never set by bank import
     public let addedAt: String
     public let tags: [String]
 }
@@ -1089,7 +1089,7 @@ public actor Library {
     public func get(id: String) throws -> Preset
     public func findBySha(_ sha256: String) -> [LibraryEntry]
     public func hasBlob(_ sha256: String) -> Bool
-    public func slotMap() -> [Int: LibraryEntry]
+    public func slotMap() -> [Int: LibraryEntry]   // the user's real pins; NOT a sync baseline
 
     // writes (index rewritten atomically after each)
     /// Blob file written iff absent; ALWAYS a new entry (two entries may share one blob
@@ -1121,42 +1121,59 @@ engineer sets both to YES so Eric can move libraries between iPad and Mac).
 
 ```swift
 public enum SlotStatus: String, Sendable, CaseIterable {
-    case inSync = "in_sync"       // assigned entry's sha == device sha
-    case deviceOnly = "added"     // non-expendable on device, no assigned entry
-    case libraryOnly = "missing"  // entry assigned, device slot expendable
-    case differs = "changed"      // both real, shas differ
-    case empty = "empty"          // device slot expendable, nothing assigned
+    case inSync = "in_sync"        // baseline ref's sha == device sha
+    case unlisted = "unlisted"     // non-expendable on device, baseline silent here
+    case baselineOnly = "missing"  // baseline places a preset, device slot expendable
+    case differs = "changed"       // both real, shas differ
+    case empty = "empty"           // device slot expendable, baseline silent here
 }
 
 public struct SlotDiff: Sendable, Equatable {
     public let slot: Int
     public let status: SlotStatus
     public let device: SlotRecord?
-    public let library: LibraryEntry?
+    public let baseline: PresetRef?    // what the chosen collection places here
+    public let nameDiffers: Bool       // shas equal, names differ
 }
 
 public struct SyncDiff: Sendable, Equatable {
     public let slots: [SlotDiff]                    // one per snapshot record, ascending
+    public let unreadBaselineSlots: [Int]           // baseline slots the snapshot missed
     public func byStatus(_ status: SlotStatus) -> [SlotDiff]
 }
 
 /// Pure and deterministic; computes and never writes. Every considered record must carry
 /// a sha256 — else .snapshotMissingHashes (refusing beats guessing). Per record, with
-/// ex = slot in findExpendable(records, threshold:) and lib = slotMap[slot]:
-/// no lib && ex -> .empty; no lib -> .deviceOnly; sha == lib.sha256 -> .inSync;
-/// ex -> .libraryOnly; else -> .differs.
+/// ex = slot in findExpendable(records, threshold:) and b = baseline[slot]:
+/// no b && ex -> .empty; no b -> .unlisted; sha == b.sha256 -> .inSync;
+/// ex -> .baselineOnly; else -> .differs.
 public func computeDiff(snapshot: DeviceSnapshot,
-                        slotMap: [Int: LibraryEntry],
+                        baseline: [Int: PresetRef],
                         threshold: Int = Wire.duplicateThreshold) throws -> SyncDiff
 
-public extension Library {
-    /// Convenience: computeDiff(snapshot:, slotMap: slotMap(), threshold:).
-    func diff(against snapshot: DeviceSnapshot,
-              threshold: Int = Wire.duplicateThreshold) throws -> SyncDiff
-}
+/// Convenience: computeDiff(snapshot:, baseline: collection.slots, threshold:).
+public func computeDiff(snapshot: DeviceSnapshot,
+                        collection: PresetCollection,
+                        threshold: Int = Wire.duplicateThreshold) throws -> SyncDiff
 ```
 
-The core never auto-writes from a diff; executing one is the app composing `write`/`add` calls.
+**The baseline is a collection, never the library.** The library is a flat catalog of unique
+patches carrying no slot opinion (`LibraryEntry.slot` is a deliberate user pin), so diffing
+against it merged all 17 seed packs — every one of them numbering from slot 1 — into one
+incoherent slot map. A slot the baseline is silent about is `.unlisted` or `.empty`, never
+`missing`.
+
+`SlotStatus` is never persisted (in-memory badges + one accessibility string), so the raw
+values are free to change with the golden vectors; anything that ever persists a sync status
+would break that.
+
+**One decision table.** `planApply` is computed on `computeDiff`: `.inSync && !nameDiffers` →
+SKIP; `.inSync` (name only) / `.differs` / `.baselineOnly` → WRITE; `.unlisted` / `.empty` →
+the unlisted policy. Regenerating `collections.json` after any change to either must produce a
+byte-identical file — that is the parity proof that the two halves stayed one table.
+
+The core never auto-writes from a diff; executing one is the app composing `write`/`add` calls,
+or `planApply` + `applyCollection` for a whole arrangement.
 
 ```swift
 public enum Analysis {
@@ -1400,8 +1417,8 @@ Lifecycle and internals (normative):
 | `WriteSequenceTests` | full 7-frame order + ack accounting against the sim; torn write via `failChunkAt` (→ `.chunkNotAcked`, sim slot untouched, next verified write succeeds); cancellation mid-burst (→ `.operationCancelled`, then rewrite recovers) |
 | `DeviceTests` | write-verify (success, name-mismatch, blob-mismatch with `firstDifference`), rename (name-frame-only: sim wire log contains no chunks), snapshot swallowing only name-read failures, snapshot cancellation returns nothing partial |
 | `BackupRestoreTests` | backup on-disk bytes (index keys, NNN.bin, meta_hex), per-slot persistence (cancel mid-pass leaves loadable partial state), resume skips, `BackupSet.load` re-hash + first-bad-slot naming, old-index-without-meta_hex behavior, restore stop-on-first-failure with `.restoreFailed.completed` |
-| `LibraryTests` | create/open/exists/corrupt, add dedupes blobs but not entries, slot-claim clearing, remove refcounting, get() re-hash, importSnapshot skip rules; interop assertions: id is 32-char hyphenless lowercase hex, timestamps match the pinned format, `slot: null` written |
-| `SyncTests`, `AnalysisTests` | the five states, `.snapshotMissingHashes`, expendable rules incl. never-"Init"-by-name, scratch-slot preference |
+| `LibraryTests` | create/open/exists/corrupt, add dedupes blobs but not entries, slot-claim clearing, remove refcounting, get() re-hash, importSnapshot skip rules; **bank imports claim no slots** and `clearCollectionSlotClaims()` is loss-free, keeps an unexplained pin, leaves a device capture's pins alone (only an `.importedBank` collection explains a claim), and is idempotent; `storePreset` makes an adopted ref resolvable and catalogues nothing; interop assertions: id is 32-char hyphenless lowercase hex, timestamps match the pinned format, `slot: null` written |
+| `SyncTests`, `AnalysisTests` | the five states, `.snapshotMissingHashes`, the sparse-baseline regression (silence is not `missing`), exact-match reads as all-in-sync, name-only difference, unread baseline slots, `planApplyAgreesWithDiff` (the one-table proof), expendable rules incl. never-"Init"-by-name, scratch-slot preference |
 | `SimulatedFidelityTests` | ack shapes, lag holding-cell semantics (held reply renders current state; seq echoes its own request), factory meta positional correctness (0x10 at ≥128, payload[9] flip at 384), fault conditions |
 | `ConcurrencyTests` | two concurrent `writePreset`/`readBlob` tasks on one session → zero sim faults, transcripts strictly sequential (the FIFO gate holds) |
 | `SysEx7Tests` | §12.1 table exhaustively |
@@ -1425,7 +1442,7 @@ cheap):
   `ProgressEvent`, `NameInfo`, `LibraryEntry`, `SlotDiff`, `SlotStatus`, `SyncDiff`.
 - `ProgressReporter` + `Task` cancellation (§6 pattern is normative).
 - `FreakError` for user-facing error mapping (switch on `group` for coarse handling).
-- `Library` (actor), `BackupSet`, `computeDiff`/`Library.diff`, `Analysis`.
+- `Library` (actor), `BackupSet`, `computeDiff(snapshot:baseline:)` / `(snapshot:collection:)`, `planApply`, `Analysis`.
 - Device acquisition:
 
 ```swift
@@ -1459,8 +1476,10 @@ App-side obligations (normative, UI design otherwise free):
    snapshot, and "safe target" suggestions use `Analysis.pickScratchSlot`.
 5. Writes/renames go through the default **verified** overloads; `.verifyMismatch` is surfaced
    loudly, never retried silently.
-6. The sync screen renders `SyncDiff` rows grouped by `SlotStatus` and composes explicit
-   per-row `write`/`add` actions — the app never auto-writes a diff either.
+6. The sync screen picks ONE baseline collection, renders `SyncDiff` rows grouped by
+   `SlotStatus`, and composes explicit per-row `write`/`add` actions — the app never
+   auto-writes a diff either. Its "make the device match this collection" action is the
+   same `planApply` pre-flight the Collections screen uses.
 7. File locations: `Documents/Library/`, `Documents/Backups/<yyyy-MM-dd-HHmmss>/`;
    `UIFileSharingEnabled` and `LSSupportsOpeningDocumentsInPlace` = YES.
 8. Serialize device operations in the app layer too (one op in flight per device; the session

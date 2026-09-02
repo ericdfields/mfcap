@@ -714,8 +714,14 @@ Python (`Library`):
 ```python
 def collection_from_bank(self, items: Iterable[BankItem], *, name: str,
                          source: str) -> Tuple[PresetCollection, List[LibraryEntry]]:
-    """Store blobs, add one Uncategorized library entry per placed item, build
-    and save an IMPORTED_BANK collection. Returns (collection, added_entries)."""
+    """Store blobs, add one SLOT-LESS Uncategorized library entry per placed
+    item, build and save an IMPORTED_BANK collection. Returns
+    (collection, added_entries).
+
+    The COLLECTION owns the arrangement; the flat catalog entry carries no
+    slot opinion (UX spec §26.3: "no slot claim"). Stamping it made every pack
+    — all of them numbering from slot 1 — claim slots 0..31 and silently steal
+    them from the previously imported pack."""
 ```
 
 Swift (`Library` actor):
@@ -899,7 +905,7 @@ The `ApplyPlan` already carries `writeCount`, `clearCount`, `skipCount`,
 `"changes \(writeCount + clearCount) of \(totalSlots) slots, ~\(Int(estimatedSeconds.rounded())) s"`
 — and lists each `changes()` row with its `incoming.name` and `victim` name +
 expendability (via `Analysis.findExpendable` over the same snapshot), driving
-the existing `OverwritePlan`/`BulkApplyPlan` guard-rail component. No new UI
+the existing `OverwritePlan` guard-rail component. No new UI
 type is required in the core; a thin app-side `CollectionApplyPlan` view model
 wraps `ApplyPlan` for presentation.
 
@@ -969,7 +975,10 @@ functions to `gen_vectors.py` and register them in `main()`; each writes into
   SKIP (unlisted + clear but device already == clear_with); and the error case
   `plan_apply` over a hash-less / partial snapshot → `expected_error`. Snapshot
   records and refs use real sha256 hex of seeded blobs (only string equality
-  matters), following the existing `sync_diff.json` convention.
+  matters), following the existing `sync_diff.json` convention. `plan_apply`
+  is computed on `sync.diff_baseline`, so `collections.json` must regenerate
+  byte-identically after any change to either — that is the parity proof that
+  the read-only diff and the write plan are ONE decision table.
 
 Blob-bearing fixtures (if any) obey the existing `verify()` guard (4672-byte
 `blob_hex`, `F0…F7` framing on `frame` fields). Regenerate with

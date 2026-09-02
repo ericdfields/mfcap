@@ -166,6 +166,14 @@ public struct PresetRef: Sendable, Equatable {
         self.metaHex = metaHex
     }
 
+    /// The inverse of `toPreset`: describe a resolved preset as a collection
+    /// occupant. Lets a caller record "the collection expects THIS here"
+    /// without re-implementing the meta hex codec outside the core.
+    public init(preset: Preset) {
+        self.init(sha256: preset.sha256, name: preset.name,
+                  metaHex: preset.meta.hexString)
+    }
+
     /// Resolve to a Preset given the blob bytes. Throws Preset's validations.
     public func toPreset(blob: Data) throws -> Preset {
         guard let meta = Data(hexString: metaHex) else {

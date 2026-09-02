@@ -2,9 +2,11 @@
 map over the library's content-addressed blobs, plus identity and provenance.
 
 This module is pure of device I/O: it defines the collection value types, their
-JSON codec, and the pure apply/switch PLAN (plan_apply). It imports model and
-errors ONLY (never device or library), so planning is importable everywhere and
-stays free of any wire/byte dependency. Executing a plan is
+JSON codec, and the pure apply/switch PLAN (plan_apply). It imports model,
+errors and sync ONLY (never device or library), so planning is importable
+everywhere and stays free of any wire/byte dependency. `plan_apply` is
+expressed on top of `sync.diff_baseline` so there is exactly ONE definition of
+device-vs-collection difference in the core. Executing a plan is
 MicroFreak.apply_collection (device.py); building/storing collections is the
 Library (library.py).
 
@@ -30,6 +32,7 @@ from typing import Dict, Optional, Tuple
 
 from .errors import LibraryCorruptError
 from .model import DeviceSnapshot, PresetRef, SlotRecord
+from .sync import SlotStatus, diff_baseline
 
 _COLLECTION_SCHEMA = 1
 _ZERO_META_HEX = "00" * 9        # a valid, writable all-zero meta (Ambient Peaks)
@@ -183,6 +186,14 @@ def plan_apply(collection: PresetCollection, snapshot: DeviceSnapshot, *,
           record already equals clear_with (sha AND name) -> SKIP_UNCHANGED
           else                                            -> CLEAR
         unlisted == 'leave':                              -> SKIP_UNCHANGED
+
+    Computed on `sync.diff_baseline` — the SAME decision table the Sync screen
+    renders — so the read-only diff and the write plan can never disagree:
+      IN_SYNC and not name_differs                 -> SKIP_UNCHANGED
+      IN_SYNC (name only) / DIFFERS / BASELINE_ONLY -> WRITE
+      UNLISTED / EMPTY                              -> the unlisted policy
+    Expendability only splits the diff's LABEL (`changed` vs `missing`), never
+    the action, so routing through the diff leaves every plan byte-identical.
     """
     records = sorted(snapshot.records, key=lambda r: r.slot)
     total = len(records)
@@ -201,27 +212,28 @@ def plan_apply(collection: PresetCollection, snapshot: DeviceSnapshot, *,
             f"collection references slot {max(collection.slots)} beyond the "
             f"snapshot's {total} slots")
 
+    d = diff_baseline(snapshot, collection.slots)
     plans = []
     write_count = clear_count = skip_count = 0
-    for r in records:
-        ref = collection.slots.get(r.slot)
-        if ref is not None:
-            if r.sha256 == ref.sha256 and r.name == ref.name:
-                plans.append(SlotPlan(r.slot, PlanAction.SKIP_UNCHANGED, None, None))
+    for row in d.slots:
+        r = row.device
+        if row.baseline is not None:
+            if row.status is SlotStatus.IN_SYNC and not row.name_differs:
+                plans.append(SlotPlan(row.slot, PlanAction.SKIP_UNCHANGED, None, None))
                 skip_count += 1
             else:
-                plans.append(SlotPlan(r.slot, PlanAction.WRITE, ref, r))
+                plans.append(SlotPlan(row.slot, PlanAction.WRITE, row.baseline, r))
                 write_count += 1
         elif options.unlisted == "clear":
             cw = options.clear_with
             if r.sha256 == cw.sha256 and r.name == cw.name:
-                plans.append(SlotPlan(r.slot, PlanAction.SKIP_UNCHANGED, None, None))
+                plans.append(SlotPlan(row.slot, PlanAction.SKIP_UNCHANGED, None, None))
                 skip_count += 1
             else:
-                plans.append(SlotPlan(r.slot, PlanAction.CLEAR, cw, r))
+                plans.append(SlotPlan(row.slot, PlanAction.CLEAR, cw, r))
                 clear_count += 1
         else:   # leave
-            plans.append(SlotPlan(r.slot, PlanAction.SKIP_UNCHANGED, None, None))
+            plans.append(SlotPlan(row.slot, PlanAction.SKIP_UNCHANGED, None, None))
             skip_count += 1
 
     estimated = round((write_count + clear_count) * options.seconds_per_write, 1)

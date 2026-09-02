@@ -23,7 +23,12 @@ public struct LibraryEntry: Sendable, Equatable, Identifiable {
     public let name: String
     public let sha256: String
     public let metaHex: String       // 18 hex chars, round-trips Preset.meta
-    public let slot: Int?            // desired device slot; at most one entry per slot
+    /// A DELIBERATE user pin: "when I send this patch, it belongs in this
+    /// slot". Set only by `assignSlot` (and device-capture adds that record
+    /// where the bytes came from) — NEVER by importing a bank or merging a
+    /// bundle, whose arrangement lives in a `PresetCollection`. At most one
+    /// entry per slot.
+    public let slot: Int?
     public let addedAt: String
     public let tags: [String]
     public let category: Category    // editable; auto-filled from meta[7] on device import
@@ -285,8 +290,15 @@ public actor Library {
         let sha = try ensureBlob(preset.blob)
         if dedupe, let i = entriesList.firstIndex(
             where: { $0.sha256 == sha && $0.name == preset.name }) {
-            let e = entriesList[i]
+            var e = entriesList[i]
             let newSlot: Int? = e.slot ?? slot
+            // The new-entry path below clears competing claims; the dedupe
+            // path must too, or two entries can claim one slot and slotMap()
+            // would silently drop one.
+            if e.slot == nil, let newSlot {
+                clearSlotClaims(newSlot)
+                e = entriesList[i]        // list may have been rewritten
+            }
             let merged = e.with(
                 slot: newSlot,
                 tags: orderedUnion(e.tags, tags),
@@ -322,7 +334,12 @@ public actor Library {
             let key = e.sha256 + "\u{0}" + e.name
             if let p = keep[key] {
                 keep[key] = p.with(
-                    slot: p.slot ?? e.slot,
+                    // `.some(...)` is load-bearing: `slot:` is `Int??`, so a
+                    // bare `p.slot ?? e.slot` wraps p.slot into a non-nil
+                    // outer optional and the survivor's nil slot would swallow
+                    // e's real pin (Python: `p.slot if p.slot is not None
+                    // else e.slot`).
+                    slot: .some(p.slot ?? e.slot),
                     tags: orderedUnion(p.tags, e.tags),
                     category: p.category == .uncategorized ? e.category : p.category,
                     favorite: p.favorite || e.favorite,
@@ -338,6 +355,51 @@ public actor Library {
             try save()
         }
         return removed
+    }
+
+    /// One-time repair for libraries built before bank import stopped stamping
+    /// entry slots (every pack numbered from slot 1, so all of them claimed
+    /// 0…31 and each import silently stole those slots from the last). Clears
+    /// a claim ONLY when an `.importedBank` collection already records the
+    /// same (sha256, name) at that same slot — i.e. only when the arrangement
+    /// being removed from the flat catalog is stored, intact, in the imported
+    /// bank that put it there. Loss-free by construction. Idempotent. Returns
+    /// the number of claims cleared.
+    ///
+    /// The imported-bank restriction is what makes the promise true. Only
+    /// `collectionFromBank` ever stamped a slot it did not own, so only an
+    /// `.importedBank` collection can explain a claim that should not exist.
+    /// A `.deviceSnapshot` collection records the very same (sha256, name,
+    /// slot) triples as the `importSnapshot` pins taken in the same capture,
+    /// so keying on every collection erased the ordinary "Import Device… then
+    /// Snapshot This Device as a Collection" flow's pins wholesale; keying on
+    /// imported banks alone leaves a device capture alone, as documented.
+    ///
+    /// Residual, unavoidable case: a deliberate `assignSlot` survives unless
+    /// an imported bank happens to place those exact (sha256, name) bytes at
+    /// that exact slot — the one state a legacy stamped claim is genuinely
+    /// indistinguishable from, because the legacy import created it.
+    @discardableResult
+    public func clearCollectionSlotClaims() throws -> Int {
+        var placed: [Int: Set<String>] = [:]          // slot -> {"sha\0name"}
+        for coll in try collections() {
+            // Only a bank import ever stamped a slot it did not own; a device
+            // capture is left alone.
+            guard coll.provenance.kind == .importedBank else { continue }
+            for (slot, ref) in coll.slots {
+                placed[slot, default: []].insert(ref.sha256 + "\u{0}" + ref.name)
+            }
+        }
+        var cleared = 0
+        for (i, e) in entriesList.enumerated() {
+            guard let slot = e.slot else { continue }
+            if placed[slot]?.contains(e.sha256 + "\u{0}" + e.name) == true {
+                entriesList[i] = e.with(slot: .some(nil))
+                cleared += 1
+            }
+        }
+        if cleared > 0 { try save() }
+        return cleared
     }
 
     /// Set the (editable) category attribute. Rewrites the index atomically.
@@ -527,6 +589,21 @@ public actor Library {
         return try CollectionCodec.fromJSON(d, path: path.path)
     }
 
+    /// Store a preset's blob content-addressed and return the `PresetRef`
+    /// that names it — WITHOUT creating a catalog entry.
+    ///
+    /// The blob half of `add()`, exposed for callers that edit a collection
+    /// directly (adopting a device slot into an arrangement, say). Building a
+    /// `PresetRef` from bytes the store never received produces a ref that
+    /// `presetForRef` cannot resolve, which `planApply` then folds to SKIP
+    /// forever — a silent, permanent hole in the arrangement. Going through
+    /// here makes that impossible. Idempotent; safe for bytes already held.
+    @discardableResult
+    public func storePreset(_ preset: Preset) throws -> PresetRef {
+        _ = try ensureBlob(preset.blob)
+        return PresetRef(preset: preset)
+    }
+
     public func saveCollection(_ coll: PresetCollection) throws {
         try FileManager.default.createDirectory(at: collectionsDir(),
                                                 withIntermediateDirectories: true)
@@ -594,9 +671,11 @@ public actor Library {
         return coll
     }
 
-    /// Store blobs, add one Uncategorized library entry per placed item, build
-    /// and save an importedBank collection. Skips items with no blob or no
-    /// slot. Returns (collection, addedEntries).
+    /// Store blobs, add one SLOT-LESS Uncategorized library entry per placed
+    /// item, build and save an importedBank collection. The arrangement lives
+    /// in the collection's `slots`; the flat catalog entry claims nothing (UX
+    /// spec §26.3). Skips items with no blob or no slot. Returns
+    /// (collection, addedEntries).
     @discardableResult
     public func collectionFromBank(_ items: [BankItem], name: String,
                                    source: String) throws -> (PresetCollection, [LibraryEntry]) {
@@ -608,7 +687,9 @@ public actor Library {
             }
             let meta = item.meta.count == 9 ? item.meta : Data(count: 9)
             let preset = try Preset(name: item.name, blob: blob, meta: meta)
-            let entry = try add(preset, slot: slot, dedupe: true)   // unique catalog
+            // The COLLECTION owns the arrangement (`slots` below); the library
+            // entry is a catalog record and carries no slot opinion.
+            let entry = try add(preset, dedupe: true)              // unique catalog
             slots[slot] = PresetRef(sha256: entry.sha256, name: preset.name,
                                     metaHex: meta.hexString)
             added.append(entry)
@@ -633,7 +714,9 @@ public actor Library {
             var slots: [Int: PresetRef] = [:]
             for (slot, ref) in coll.slots {
                 let preset = try await other.presetForRef(ref)
-                let entry = try add(preset, slot: slot, dedupe: true)
+                // The merged collection below carries the arrangement; the
+                // catalog entry stays slot-less.
+                let entry = try add(preset, dedupe: true)
                 slots[slot] = PresetRef(sha256: entry.sha256, name: preset.name,
                                         metaHex: ref.metaHex)
             }

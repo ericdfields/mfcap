@@ -91,14 +91,16 @@ struct LibraryListView: View {
         // Read the two wholesale-reassigned dictionaries ONCE per list body
         // instead of once per realized row: `syncBadges` is replaced entirely
         // on every recomputeSync(), which fires after every library mutation.
-        let badges = model.slots.syncBadges
+        let statusBySha = model.sync.statusBySha
+        let baselineName = model.sync.baseline?.name
         let corrupt = model.libraryModel.corruptEntries
         return List {
             ForEach(model.libraryModel.filtered(tag: tag)) { entry in
                 LibraryRowView(entry: entry, renamingEntry: $renamingEntry,
                                requestDelete: { deleteCandidate = $0 },
-                               syncHint: LibraryRowView.syncHint(for: entry,
-                                                                 badges: badges),
+                               syncHint: LibraryRowView.syncHint(
+                                   for: entry, statusBySha: statusBySha,
+                                   baselineName: baselineName),
                                corruptDetail: corrupt[entry.id],
                                selecting: selecting,
                                isSelected: selectedIDs.contains(entry.id),
@@ -432,13 +434,20 @@ struct LibraryRowView: View {
     }
 
     /// Pure lookup, so the owning list can resolve it once for every row.
+    ///
+    /// Keyed on CONTENT, not on a slot claim: the catalog is a flat set of
+    /// unique patches with no slot opinion, so an entry's relationship to the
+    /// device is found by its bytes and reported against the collection Sync
+    /// is comparing to.
     static func syncHint(for entry: LibraryEntry,
-                         badges: [Int: SlotStatus]) -> String? {
-        guard let slot = entry.slot, let status = badges[slot] else { return nil }
+                         statusBySha: [String: SlotStatus],
+                         baselineName: String?) -> String? {
+        guard let status = statusBySha[entry.sha256] else { return nil }
+        let suffix = baselineName.map { " in '\($0)'" } ?? ""
         switch status {
-        case .inSync: return "in sync"
-        case .differs: return "differs"
-        case .libraryOnly: return "not on device"
+        case .inSync: return "in sync\(suffix)"
+        case .differs: return "differs on device"
+        case .baselineOnly: return "not on device"
         default: return nil
         }
     }

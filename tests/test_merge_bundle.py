@@ -77,6 +77,44 @@ def run_dedupe() -> None:
     print("PASS  dedupe() repair collapses exact dups, merges attributes")
 
 
+def run_slot_claim_repair() -> None:
+    """The reported bug: every pack numbers from slot 1, so 17 collections all
+    claimed 0..31 and each import silently stole them from the last. Imports
+    now claim nothing; the repair de-pollutes a library built before the fix."""
+    root = Path(tempfile.mkdtemp())
+    lib = Library.create(root / "claims")
+    lib.collection_from_bank(
+        [BankItem(slot=0, name="Peak A", meta=b"\x00" * 9, blob=_preset(1, "a").blob),
+         BankItem(slot=1, name="Peak B", meta=b"\x00" * 9, blob=_preset(2, "b").blob)],
+        name="Ambient Peaks", source="peaks.mfprojz")
+    lib.collection_from_bank(
+        [BankItem(slot=0, name="Bass A", meta=b"\x00" * 9, blob=_preset(3, "c").blob),
+         BankItem(slot=1, name="Bass B", meta=b"\x00" * 9, blob=_preset(4, "d").blob)],
+        name="Naughty Bass", source="bass.mfprojz")
+    assert len(lib.entries()) == 4
+    assert lib.slot_map() == {}, "the flat catalog has no slot opinion"
+    colls = {c.name: c for c in lib.collections()}
+    assert colls["Ambient Peaks"].covered_slots() == (0, 1)
+    assert colls["Naughty Bass"].covered_slots() == (0, 1)
+    print("PASS  two packs over slots 0..1: 0 entry claims, both arrangements intact")
+
+    # simulate a pre-fix library: a stamped claim plus a deliberate pin
+    by_name = {e.name: e for e in lib.entries()}
+    lib.assign_slot(by_name["Peak A"].id, 0)      # explained by Ambient Peaks
+    lib.assign_slot(by_name["Bass B"].id, 400)    # no collection places 400
+    assert len(lib.slot_map()) == 2
+    cleared = lib.clear_collection_slot_claims()
+    assert cleared == 1, cleared
+    assert list(lib.slot_map()) == [400]
+    assert lib.clear_collection_slot_claims() == 0, "idempotent"
+    # loss-free: what left the catalog is still in the collection that owns it
+    peaks = lib.collection(colls["Ambient Peaks"].id)
+    assert peaks.slots[0].sha256 == by_name["Peak A"].sha256
+    assert peaks.slots[0].name == "Peak A"
+    print("PASS  repair clears only collection-explained claims; a real pin survives")
+
+
 if __name__ == "__main__":
     run()
     run_dedupe()
+    run_slot_claim_repair()

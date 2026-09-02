@@ -13,6 +13,25 @@ This turns that store into a drop-in FreakCore seed bundle:
 Category is left Uncategorized on purpose: the .mbp meta bytes are NOT the
 device category byte (see docs/arturia-taxonomy.md), so auto-decoding would
 mis-tag. Category stays editable in the app.
+
+Regenerating the shipped seed
+-----------------------------
+    PYTHONPATH=. python3 tools/import_mcc_store.py \
+        --out ios/App/Resources/SeedBanks/library \
+        --extra <every .mfprojz bank not present in the MCC store>
+
+The output is the shipped artifact VERBATIM: never hand-edit index.json
+afterwards. It once shipped with the `verdict` key stripped from all 966
+entries, which is only reachable by editing the file after generation --
+neither core's index writer can emit an entry without it. A plain run over
+the MCC store alone yields 16 collections / 934 entries; the shipped seed
+also carries the "Ambient Peaks" bank, which must be passed via --extra.
+
+The acceptance census is asserted, not eyeballed: see
+`SeedLibraryShapeTests` in ios/App/Tests/AppModelTests.swift (966 unique
+entries and blobs, 17 collections, every entry key the cores write, every
+collection ref resolvable). A regeneration that silently drops a bank
+fails those tests.
 """
 from __future__ import annotations
 
@@ -86,10 +105,16 @@ def main() -> None:
 
     entries = lib.entries()
     blobs = len({e.sha256 for e in entries})
-    placed = sum(1 for e in entries if e.slot is not None)
+    colls = lib.collections()
+    # The ARRANGEMENT belongs to the collections; the flat catalog carries no
+    # slot opinion, so counting entry claims here would always print 0. Count
+    # the collections' placements instead.
+    placed = sum(len(c.slots) for c in colls)
+    assert all(e.slot is None for e in entries), \
+        "bank import must not stamp entry slots"
     print(f"\nprojects: {len(projects)}  entries: {len(entries)}  "
-          f"unique blobs: {blobs}  slot-placed: {placed}  "
-          f"collections: {len(lib.collections())}")
+          f"unique blobs: {blobs}  collection slots: {placed}  "
+          f"collections: {len(colls)}")
 
 
 if __name__ == "__main__":
