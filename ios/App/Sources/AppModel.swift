@@ -37,6 +37,9 @@ enum ConnectionState: Equatable {
 enum SidebarSelection: Hashable {
     case device
     case library(tag: String?)
+    case favorites                     // UX addendum §24.3
+    case collections                   // UX addendum §26 (section / All Collections)
+    case collection(id: String)        // UX addendum §26 (one collection child)
     case sync
     case backups
 }
@@ -46,6 +49,7 @@ enum DetailSelection: Hashable {
     case libraryEntry(String)
     case syncSlot(SlotID)
     case backup(String)
+    case collection(id: String)        // UX addendum §26.4
 }
 
 struct PendingConfirmation: Identifiable {
@@ -128,6 +132,7 @@ final class AppModel {
     let history: SlotHistoryStore
     var libraryModel: LibraryModel
     var backups: BackupsModel
+    let collectionsModel = CollectionsModel()
 
     private(set) var connection: ConnectionState = .noDevice(banner: nil)
     private(set) var device: (any FreakDeviceProtocol)?
@@ -158,6 +163,14 @@ final class AppModel {
     /// "MicroFreak detected — Connect?" (hot-plug; never auto-connects, UX §12).
     var hotPlugBanner: String?
 
+    // Collections (UX addendum §26, §27).
+    /// The create-from-device name prompt (NewCollectionSheet).
+    var newCollectionRequest: NewCollectionRequest?
+    /// The Apply/Switch pre-flight (CollectionApplyPlanSheet).
+    var collectionApplyRequest: CollectionApplyPlan?
+    /// Per-slot execution ticks for a running Apply (mirrors restoreRun).
+    var collectionRun: BatchRunState?
+
     // Copy / paste — paste goes through the identical guard rails (UX §5).
     var copyBuffer: PresetTransfer?
 
@@ -172,19 +185,23 @@ final class AppModel {
         }
     }
 
-    init(paths: AppPaths = .documents()) {
+    init(paths: AppPaths = .documents(), seedFromBundle: Bool = true) {
         self.paths = paths
         self.fastPracticeTiming = UserDefaults.standard
             .bool(forKey: "MFFastPracticeTiming")
         self.history = SlotHistoryStore(url: paths.historyURL)
         try? FileManager.default.createDirectory(
             at: paths.backupsRoot, withIntermediateDirectories: true)
-        libraryModel = LibraryModel(root: paths.libraryRoot)
+        libraryModel = LibraryModel(root: paths.libraryRoot,
+                                    seedFromBundle: seedFromBundle)
         backups = BackupsModel(root: paths.backupsRoot)
         libraryModel.onChange = { [weak self] in
             self?.recomputeSync()
         }
         libraryModel.openOrCreate()
+        // Collections live in the library folder (data-model spec §4) — mirror
+        // them once the library is open; refreshed again after any mutation.
+        Task { await collectionsModel.refresh(from: libraryModel.library) }
         // Drag-out .mfpreset export resolves bytes through this model.
         PresetTransferExporter.model = self
         Task {

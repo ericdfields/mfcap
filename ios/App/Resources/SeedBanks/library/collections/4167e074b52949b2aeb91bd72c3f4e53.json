@@ -1,0 +1,172 @@
+{
+  "schema": 1,
+  "id": "4167e074b52949b2aeb91bd72c3f4e53",
+  "name": "Naughty Bass",
+  "created_at": "2026-09-01T22:40:55",
+  "provenance": {
+    "kind": "imported_bank",
+    "source": "Naughty Bass"
+  },
+  "slots": {
+    "0": {
+      "sha256": "9cb33155852a6db77908b62d5a25ffda6708b58e14ea9e07bbb6990b505018b7",
+      "name": "Jungle Wub",
+      "meta_hex": "000000000000000000"
+    },
+    "1": {
+      "sha256": "05c821c8d02cee7f3a3b547d6bc83eb46cae9d688b2985ecc6c33c08d02d9067",
+      "name": "Anasquelch",
+      "meta_hex": "000000000000000000"
+    },
+    "2": {
+      "sha256": "4a801934bbf56854cbf7d356400e7ecd40d2b5e8ebb92b53768740bb15af5f03",
+      "name": "Pure 808",
+      "meta_hex": "000000000000000000"
+    },
+    "3": {
+      "sha256": "fb4004b19b1e0e4fc5d4e865f68bbdaf0c053485ba3871a5d34eeec6779b43f7",
+      "name": "Xcite",
+      "meta_hex": "000000000000000000"
+    },
+    "4": {
+      "sha256": "7cdd2ff2a9d061c6f1b8a524406cb21accbedbbdd594a5387c5166c0c8078ce7",
+      "name": "Rubber",
+      "meta_hex": "000000000000000000"
+    },
+    "5": {
+      "sha256": "da074e489df3a3a3ac558bdc3306be153700b0d12b26d67792dedf4a6ff27e98",
+      "name": "WS Tech",
+      "meta_hex": "000000000000000000"
+    },
+    "6": {
+      "sha256": "5f4767a337af6ff3e3d5fade5421f6ec7ef3061b9930eec0f68590c4eaf85183",
+      "name": "Mint",
+      "meta_hex": "000000000000000000"
+    },
+    "7": {
+      "sha256": "4df948b7ff930bb46a5c4cb9f33dd48ef8cbe28b4bcbf5b83e292ef59c8da16d",
+      "name": "Wave Rider",
+      "meta_hex": "000000000000000000"
+    },
+    "8": {
+      "sha256": "76b52ab9e1687bbb9db0cda88c7e988d157390555ead0f13d096371f1b926e7e",
+      "name": "HP Reece",
+      "meta_hex": "000000000000000000"
+    },
+    "9": {
+      "sha256": "1fdc9a2765eec1857cf661660f43914d4b66803689fb29354c669f19478ff4b1",
+      "name": "Modal",
+      "meta_hex": "000000000000000000"
+    },
+    "10": {
+      "sha256": "9441859a10f3b2b62c819b64583658e2e6f7ef011a9130402c75172a9277fab9",
+      "name": "Skanner",
+      "meta_hex": "000000000000000000"
+    },
+    "11": {
+      "sha256": "6de30d59a5361ab847e44a767efe2ad2220365b27292d49fa8879c750a7bb5f5",
+      "name": "EDM SC",
+      "meta_hex": "000000000000000000"
+    },
+    "99": {
+      "sha256": "e9e63e22f5aa96fa63c48240d53cb4711f3e8f788e1887aee1584b82fcb9ad18",
+      "name": "Oh Wo",
+      "meta_hex": "000000000000000000"
+    },
+    "100": {
+      "sha256": "ad50dc6f38e102288e7d516e8b392babc543c4be1b0166176e0db9be7417b758",
+      "name": "Woody WS",
+      "meta_hex": "000000000000000000"
+    },
+    "101": {
+      "sha256": "c62b8dfe90f29bb475c13db1ba68124951ced8073897b04cfa6a545016772402",
+      "name": "Edit",
+      "meta_hex": "000000000000000000"
+    },
+    "102": {
+      "sha256": "4a7c3411411cd05a7e60fe0df8776e25674b9657242323bf482f86284bb2e2cf",
+      "name": "Reece Roller",
+      "meta_hex": "000000000000000000"
+    },
+    "103": {
+      "sha256": "9de291794fc6d52459da7b5adfc4e9493958c9328598e04499760f5e22b71844",
+      "name": "Super Squ Sub",
+      "meta_hex": "000000000000000000"
+    },
+    "104": {
+      "sha256": "5555a8f52260bac0a799cb96e60a10886766de5e2986e389a292b9a9a054514a",
+      "name": "Control",
+      "meta_hex": "000000000000000000"
+    },
+    "105": {
+      "sha256": "164e27795a47bf2e99255fc8c20b352c48f121e650f99a2c1c8eb0a58dda54df",
+      "name": "Direct",
+      "meta_hex": "000000000000000000"
+    },
+    "106": {
+      "sha256": "7d6246d6e44c661f841a9e5eb2d8496d4ec81c1effa6ed08f3a9985ec21c5c14",
+      "name": "Slow Sub",
+      "meta_hex": "000000000000000000"
+    },
+    "107": {
+      "sha256": "9a9c112f1d69789262eb0d10d431a348d30b03d5321d90c872d8db209fc89658",
+      "name": "Bass Drone",
+      "meta_hex": "000000000000000000"
+    },
+    "108": {
+      "sha256": "430af06d420e1368b2731393015a9898261b8eda5c9dec8a3ea5043f58137d43",
+      "name": "F House",
+      "meta_hex": "000000000000000000"
+    },
+    "109": {
+      "sha256": "daf055dbd96297c1643cb2d9068d7da98386d5f2f73e46020ce8a182bc350dce",
+      "name": "Automate",
+      "meta_hex": "000000000000000000"
+    },
+    "110": {
+      "sha256": "078f0a28bd6621a81e4675d43d3378cace8fdba8e976fe33a439d89f464253cd",
+      "name": "Mutant Pluck",
+      "meta_hex": "000000000000000000"
+    },
+    "111": {
+      "sha256": "d5fcf008eb61ffbbf28422f52c2f1825c08ea604a47fb12725a304fb17f380f1",
+      "name": "Postbox",
+      "meta_hex": "000000000000000000"
+    },
+    "112": {
+      "sha256": "5813e5c56f12754b2f493512966b747e7e575366630f57f15736b1aa23b7b96b",
+      "name": "Big Freak",
+      "meta_hex": "000000000000000000"
+    },
+    "113": {
+      "sha256": "5ee0522ee9cac90d211ec505cef05ba215bf25f8b5dcc3e4e585f8dbf5d7415c",
+      "name": "Darkside",
+      "meta_hex": "000000000000000000"
+    },
+    "114": {
+      "sha256": "e20fbaa8a3327dd06eaeed49d0bde450cbafb54201919d3a9cb4995e3e090f32",
+      "name": "Wave Funk",
+      "meta_hex": "000000000000000000"
+    },
+    "115": {
+      "sha256": "9e934cbf3cc1acc0aebb44ef4da93a8fc18c8754c23b6911c74636e65ac5b599",
+      "name": "Dual",
+      "meta_hex": "000000000000000000"
+    },
+    "116": {
+      "sha256": "ca9334fb8b4b841a24eb0eb6855ab8ff660e107ada7c50851c8828e6321bd1a1",
+      "name": "Kode",
+      "meta_hex": "000000000000000000"
+    },
+    "117": {
+      "sha256": "b6b3efc814977afbb68fe1345f7b4841359ba8e24727847f769eda6a96ae81bf",
+      "name": "Cycling",
+      "meta_hex": "000000000000000000"
+    },
+    "118": {
+      "sha256": "f66ea0c0209352235f0d410cc0caf92f06071a149dc74fb75393b14a11b773a6",
+      "name": "Quit",
+      "meta_hex": "000000000000000000"
+    }
+  }
+}

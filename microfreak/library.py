@@ -17,13 +17,17 @@ import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Set, Tuple, Union
+from typing import (Dict, Iterable, List, Optional, Sequence, Set, Tuple,
+                    Union)
 
 from .analysis import find_expendable
 from .backup import atomic_write_text
-from .errors import (EntryNotFoundError, IntegrityError, LibraryCorruptError,
-                     SlotOutOfRangeError)
-from .model import DeviceSnapshot, Preset
+from .collections import (BankItem, PresetCollection, Provenance,
+                          ProvenanceKind, collection_from_json,
+                          collection_to_json)
+from .errors import (CollectionNotFoundError, EntryNotFoundError,
+                     IntegrityError, LibraryCorruptError, SlotOutOfRangeError)
+from .model import Category, DeviceSnapshot, Preset, PresetRef
 from .protocol import DUPLICATE_THRESHOLD, SLOTS, digest
 
 _SCHEMA = 1
@@ -39,19 +43,43 @@ class LibraryEntry:
                                # at most one entry per slot
     added_at: str              # ISO 8601
     tags: Tuple[str, ...]
+    category: Category = Category.UNCATEGORIZED   # editable; auto-filled from meta[7] on device import
+    favorite: bool = False
 
 
 def _entry_to_json(e: LibraryEntry) -> dict:
     return {"id": e.id, "name": e.name, "sha256": e.sha256,
             "meta_hex": e.meta_hex, "slot": e.slot, "added_at": e.added_at,
-            "tags": list(e.tags)}
+            "tags": list(e.tags),
+            "category": e.category.slug, "favorite": bool(e.favorite)}
 
 
 def _entry_from_json(d: dict) -> LibraryEntry:
     return LibraryEntry(id=d["id"], name=d["name"], sha256=d["sha256"],
                         meta_hex=d["meta_hex"], slot=d.get("slot"),
                         added_at=d.get("added_at", ""),
-                        tags=tuple(d.get("tags") or ()))
+                        tags=tuple(d.get("tags") or ()),
+                        category=Category.from_slug(d.get("category", "uncategorized")),
+                        favorite=bool(d.get("favorite", False)))
+
+
+# --------------------------------------------------------- read helpers (pure)
+
+def category_census(entries: Iterable[LibraryEntry]) -> Dict[Category, int]:
+    """Count entries per Category. Every Category key present (0 when none),
+    so the UI renders a stable chip row."""
+    counts: Dict[Category, int] = {c: 0 for c in Category}
+    for e in entries:
+        counts[e.category] = counts.get(e.category, 0) + 1
+    return counts
+
+
+def all_tags(entries: Iterable[LibraryEntry]) -> List[str]:
+    """Sorted unique tag set across entries."""
+    seen: Set[str] = set()
+    for e in entries:
+        seen.update(e.tags)
+    return sorted(seen)
 
 
 class Library:
@@ -115,6 +143,22 @@ class Library:
     def _blob_path(self, sha256: str) -> Path:
         return self.root / "blobs" / f"{sha256}.bin"
 
+    def _ensure_blob(self, blob: bytes) -> str:
+        """Write the blob content-addressed iff absent; return its sha256.
+        The blob half of add(), reused by the collection builders."""
+        sha = digest(bytes(blob))
+        path = self._blob_path(sha)
+        if not path.exists():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(bytes(blob))
+        return sha
+
+    def _collections_dir(self) -> Path:
+        return self.root / "collections"
+
+    def _collection_path(self, coll_id: str) -> Path:
+        return self._collections_dir() / f"{coll_id}.json"
+
     # ---------------------------------------------------------------- reads
 
     def entries(self) -> List[LibraryEntry]:
@@ -149,26 +193,41 @@ class Library:
     # --------------------------------------------------------------- writes
 
     def add(self, preset: Preset, *, slot: Optional[int] = None,
-            tags: Sequence[str] = ()) -> LibraryEntry:
+            tags: Sequence[str] = (),
+            category: Category = Category.UNCATEGORIZED,
+            favorite: bool = False) -> LibraryEntry:
         """Blob written iff absent; always a new entry (two entries may share
         one blob sha under different names)."""
         if slot is not None and not 0 <= slot < SLOTS:
             raise SlotOutOfRangeError(slot)
-        sha = preset.sha256
-        path = self._blob_path(sha)
-        if not path.exists():
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_bytes(bytes(preset.blob))
+        sha = self._ensure_blob(preset.blob)
         entry = LibraryEntry(id=uuid.uuid4().hex, name=preset.name,
                              sha256=sha, meta_hex=bytes(preset.meta).hex(),
                              slot=slot,
                              added_at=time.strftime("%Y-%m-%dT%H:%M:%S"),
-                             tags=tuple(tags))
+                             tags=tuple(tags), category=category,
+                             favorite=bool(favorite))
         if slot is not None:
             self._clear_slot_claims(slot)
         self._entries.append(entry)
         self._save()
         return entry
+
+    def set_category(self, entry_id: str, category: Category) -> LibraryEntry:
+        return self._replace_entry(entry_id, category=category)
+
+    def set_favorite(self, entry_id: str, favorite: bool) -> LibraryEntry:
+        return self._replace_entry(entry_id, favorite=bool(favorite))
+
+    def set_tags(self, entry_id: str, tags: Sequence[str]) -> LibraryEntry:
+        return self._replace_entry(entry_id, tags=tuple(tags))
+
+    def _replace_entry(self, entry_id: str, **changes) -> LibraryEntry:
+        e = self.entry(entry_id)
+        new = dataclasses.replace(e, **changes)
+        self._entries[self._entries.index(e)] = new
+        self._save()
+        return new
 
     def rename_entry(self, entry_id: str, name: str) -> LibraryEntry:
         from .protocol import validate_name
@@ -181,15 +240,26 @@ class Library:
 
     def remove(self, entry_id: str) -> None:
         """Delete the entry; the blob file is deleted only when no remaining
-        entry references it."""
+        entry AND no remaining collection references it."""
         e = self.entry(entry_id)
         self._entries.remove(e)
-        if not self.find_by_sha(e.sha256):
+        if not self._blob_referenced(e.sha256):
             try:
                 self._blob_path(e.sha256).unlink()
             except OSError:
                 pass
         self._save()
+
+    def _blob_referenced(self, sha256: str) -> bool:
+        """True when any entry OR any collection references this sha256. Blob
+        GC now spans collections, so deleting the last entry that shares a blob
+        cannot orphan a collection's occupant."""
+        if any(e.sha256 == sha256 for e in self._entries):
+            return True
+        for coll in self.collections():
+            if any(ref.sha256 == sha256 for ref in coll.slots.values()):
+                return True
+        return False
 
     def assign_slot(self, entry_id: str, slot: Optional[int]) -> None:
         """Assigning a slot clears any other entry's claim to that slot."""
@@ -236,7 +306,125 @@ class Library:
             if (r.sha256, name) in existing:
                 continue
             entry = self.add(Preset(name=name, blob=r.blob, meta=r.meta),
-                             slot=r.slot)
+                             slot=r.slot,
+                             category=Category.from_device_byte(r.meta[7]))
             existing.add((r.sha256, name))
             added.append(entry)
         return added
+
+    # ---------------------------------------------------------- collections
+
+    def collections(self) -> List[PresetCollection]:
+        """Every <root>/collections/*.json, parsed; ascending by created_at
+        then id. Missing dir -> []."""
+        cdir = self._collections_dir()
+        if not cdir.is_dir():
+            return []
+        out: List[PresetCollection] = []
+        for path in sorted(cdir.glob("*.json")):
+            try:
+                data = json.loads(path.read_text())
+            except (OSError, ValueError) as e:
+                raise LibraryCorruptError(str(path), str(e)) from e
+            out.append(collection_from_json(data, path=str(path)))
+        out.sort(key=lambda c: (c.created_at, c.id))
+        return out
+
+    def collection(self, coll_id: str) -> PresetCollection:
+        path = self._collection_path(coll_id)
+        if not path.exists():
+            raise CollectionNotFoundError(coll_id)
+        try:
+            data = json.loads(path.read_text())
+        except (OSError, ValueError) as e:
+            raise LibraryCorruptError(str(path), str(e)) from e
+        return collection_from_json(data, path=str(path))
+
+    def save_collection(self, coll: PresetCollection) -> None:
+        cdir = self._collections_dir()
+        cdir.mkdir(parents=True, exist_ok=True)
+        atomic_write_text(self._collection_path(coll.id),
+                          json.dumps(collection_to_json(coll), indent=2))
+
+    def rename_collection(self, coll_id: str, name: str) -> PresetCollection:
+        coll = self.collection(coll_id)
+        renamed = dataclasses.replace(coll, name=name)
+        self.save_collection(renamed)
+        return renamed
+
+    def delete_collection(self, coll_id: str) -> None:
+        coll = self.collection(coll_id)                 # CollectionNotFoundError
+        shas = {ref.sha256 for ref in coll.slots.values()}
+        try:
+            self._collection_path(coll_id).unlink()
+        except OSError:
+            pass
+        for sha in shas:                                # GC now that the file is gone
+            if not self._blob_referenced(sha):
+                try:
+                    self._blob_path(sha).unlink()
+                except OSError:
+                    pass
+
+    def preset_for_ref(self, ref: PresetRef) -> Preset:
+        """Read blobs/<ref.sha256>.bin, re-hash (IntegrityError on rot/missing),
+        build ref.to_preset(blob). The standard resolver for apply."""
+        path = self._blob_path(ref.sha256)
+        try:
+            blob = path.read_bytes()
+        except OSError as exc:
+            raise IntegrityError(str(path), "blob file missing") from exc
+        if digest(blob) != ref.sha256:
+            raise IntegrityError(str(path), "sha256 mismatch (bit rot?)")
+        return ref.to_preset(blob)
+
+    # ---------------------------------------------- collection builders
+
+    def collection_from_snapshot(self, snapshot: DeviceSnapshot, *, name: str,
+                                 source: str = "") -> PresetCollection:
+        """Store each recorded blob (content-addressed) and build a collection
+        of PresetRefs at each slot. Requires kept blobs + hashes (else
+        ValueError). Skips records whose name read failed (meta is None).
+        Provenance kind = DEVICE_SNAPSHOT, source defaults to
+        snapshot.taken_at. Saved before return."""
+        records = snapshot.records
+        if any(r.blob is None for r in records):
+            raise ValueError(
+                "collection_from_snapshot requires a snapshot with kept blobs "
+                "(snapshot(read_blobs=True, keep_blobs=True))")
+        if not snapshot.has_hashes:
+            raise ValueError(
+                "collection_from_snapshot requires a snapshot with blob hashes")
+        slots: Dict[int, PresetRef] = {}
+        for r in records:
+            if r.meta is None:
+                continue     # name read failed: cannot round-trip meta
+            sha = self._ensure_blob(r.blob)
+            slots[r.slot] = PresetRef(sha256=sha, name=r.name or "",
+                                      meta_hex=bytes(r.meta).hex())
+        prov = Provenance(kind=ProvenanceKind.DEVICE_SNAPSHOT,
+                          source=source or snapshot.taken_at)
+        coll = PresetCollection.new(name=name, provenance=prov, slots=slots)
+        self.save_collection(coll)
+        return coll
+
+    def collection_from_bank(self, items: Iterable[BankItem], *, name: str,
+                             source: str) -> Tuple[PresetCollection, List[LibraryEntry]]:
+        """Store blobs, add one Uncategorized library entry per placed item,
+        build and save an IMPORTED_BANK collection. Skips items with no blob
+        or no slot. Returns (collection, added_entries)."""
+        slots: Dict[int, PresetRef] = {}
+        added: List[LibraryEntry] = []
+        for item in items:
+            if item.blob is None or item.slot is None:
+                continue     # empty/Init-only slot, or unplaceable filename
+            meta = bytes(item.meta) if len(item.meta) == 9 else b"\x00" * 9
+            preset = Preset(name=item.name, blob=item.blob, meta=meta)
+            entry = self.add(preset, slot=item.slot)     # Uncategorized default
+            slots[item.slot] = PresetRef(sha256=entry.sha256, name=preset.name,
+                                         meta_hex=meta.hex())
+            added.append(entry)
+        prov = Provenance(kind=ProvenanceKind.IMPORTED_BANK, source=source)
+        coll = PresetCollection.new(name=name, provenance=prov, slots=slots)
+        self.save_collection(coll)
+        return coll, added

@@ -1,0 +1,172 @@
+{
+  "schema": 1,
+  "id": "12ceeff2030a413fa3e106b522da8d71",
+  "name": "Voltage Forms",
+  "created_at": "2026-09-01T22:40:56",
+  "provenance": {
+    "kind": "imported_bank",
+    "source": "Voltage Forms"
+  },
+  "slots": {
+    "0": {
+      "sha256": "b7357c5072607b1e7e1ecefcebf45213cfa1c8e71ce49c63b1942a466a7aadb4",
+      "name": "Retro Neon",
+      "meta_hex": "000000000000000000"
+    },
+    "1": {
+      "sha256": "2052fad86e0bdd76c34914bd29a5e3d3bec121fd45fd0f4e5a58bec33be37793",
+      "name": "Metroid Go",
+      "meta_hex": "000000000000000000"
+    },
+    "2": {
+      "sha256": "c0cad00c95566302673127a0d945f0b9554ef8bb6ceb03d0c15dba9322f8bf2f",
+      "name": "Kick In",
+      "meta_hex": "000100000001000000"
+    },
+    "3": {
+      "sha256": "0bb23995361e1e2dd9ae9812843085e410827bbb57c2ec515596d46dadb53526",
+      "name": "Voltage Forms",
+      "meta_hex": "000000001010010000"
+    },
+    "4": {
+      "sha256": "03af25f3aa91f548240a556f8c0b2e7346e03c335224eddfe80cbaf8a2cbf8e2",
+      "name": "Love Loader",
+      "meta_hex": "000000000000000000"
+    },
+    "5": {
+      "sha256": "06e3d6d042c95ad024bd0c25a3924f8593647c8c9a93a00bf7b77395537cc43f",
+      "name": "V-Strings",
+      "meta_hex": "100000100100000000"
+    },
+    "6": {
+      "sha256": "670e8903b623f564ea1d8c39c20961a312370f5f92a452e3352b9df33f45fc8f",
+      "name": "J8 M Bass",
+      "meta_hex": "000000000000000000"
+    },
+    "7": {
+      "sha256": "02b99476b34aa68744c6e0d1aa25831b38cde636fe4a7ad3aa5dee0211425d79",
+      "name": "E-Snare",
+      "meta_hex": "000101001000000000"
+    },
+    "8": {
+      "sha256": "d5444b5900b071091e29c84cd496117bd52ecf4a5e7ac462133ad6d797b8135b",
+      "name": "Closed Hat",
+      "meta_hex": "000000000000000000"
+    },
+    "9": {
+      "sha256": "48cdc9f29eb25aebc1233d25d98a1aa64db2378d04f36d6be5c98651d78d88b3",
+      "name": "Bass Job",
+      "meta_hex": "000100001001000000"
+    },
+    "10": {
+      "sha256": "258a4ecf778c8683e6509f375c47b32e24f0d24124dbc2f288c6c6d976348677",
+      "name": "FM Tastic",
+      "meta_hex": "000100001010000000"
+    },
+    "11": {
+      "sha256": "7fe8daf5db1a49846b60817d197e789fc0ca9d2eca20d9cccc8c02e01a1c4e1c",
+      "name": "L8 Night",
+      "meta_hex": "000000000000000000"
+    },
+    "99": {
+      "sha256": "79ddaf85c12338e47da6e7e22ec2f5b34f881cb6d155e7a0288f33ef81b5f4de",
+      "name": "Smack Em",
+      "meta_hex": "000100001001000000"
+    },
+    "100": {
+      "sha256": "fc8c85572976c58705d6ff5cfba3d03b0ef89d11c7984b2cdf4f4786c7e1f134",
+      "name": "Osiris",
+      "meta_hex": "000000000000000000"
+    },
+    "101": {
+      "sha256": "269e8684dc4077b1f1312dfdce2492310e46b3037878038995b48863facef63b",
+      "name": "Sphinx Waves",
+      "meta_hex": "000000100101000000"
+    },
+    "102": {
+      "sha256": "8239c92ddc4e0083f7bcbb0c780db2681cff02c81fa5d162acc47875ccf79c4a",
+      "name": "Polished Car",
+      "meta_hex": "000100000000010000"
+    },
+    "103": {
+      "sha256": "3b2e9d92e0777cf03ceb44d7e257cdc9e72c1c18f8bb56d0dc813e544e6a0fb9",
+      "name": "Shaker",
+      "meta_hex": "010101000000000000"
+    },
+    "104": {
+      "sha256": "1501b0b5573ad8a600775252cf51936a5ea867800bfc00355bcceb40c71bc19f",
+      "name": "Endless Road",
+      "meta_hex": "000000000000000000"
+    },
+    "105": {
+      "sha256": "2a72251dd301d451a481477b6399ec13b23d08c227d78ace339eb0694fa907d8",
+      "name": "Quiz Deluxe",
+      "meta_hex": "010100001000000000"
+    },
+    "106": {
+      "sha256": "dcdd6a3d98a0483bbbcd2fc05398421fad083bd69c9e5de6914309f251e7e032",
+      "name": "Oldschool Dirt",
+      "meta_hex": "000000000000000000"
+    },
+    "107": {
+      "sha256": "678ead9c300e4adaab6a460a2057d5b75a1b09f65afbcb04e4f26397fe9ec620",
+      "name": "Waves Of Storm",
+      "meta_hex": "000100010000010000"
+    },
+    "108": {
+      "sha256": "0825c57260cadb6e4631d99015670d08a9db0d56bc0e71a4cf54429594aaff94",
+      "name": "Jaz",
+      "meta_hex": "000100000010001000"
+    },
+    "109": {
+      "sha256": "0aaae47e8a01b54d331b25ba7903572fe45ea2bf41ae7455183ffe58b76bacd5",
+      "name": "Battle Bog",
+      "meta_hex": "000000000000000000"
+    },
+    "110": {
+      "sha256": "57410feccfbb242b633b00647d3ccf704c687d8b116e01bc9f9711db47e4839d",
+      "name": "Modulus",
+      "meta_hex": "000000100001010000"
+    },
+    "111": {
+      "sha256": "5ba380aba81d9ffbe09014f02258a860e0149b6292446f8fe45554c5ad581d59",
+      "name": "Slow Juicer",
+      "meta_hex": "000000101000000010"
+    },
+    "112": {
+      "sha256": "39684a8d16acab1d7f52bf89c7c274b6bdac4419dc8c37f3ee9d9cf75473e4d5",
+      "name": "Kick Blast",
+      "meta_hex": "000100001000000000"
+    },
+    "113": {
+      "sha256": "0afe1b35c3b8969b760256f5f21940dcd6c68e3c4443612efe163976c7cf71c9",
+      "name": "Clap",
+      "meta_hex": "000101001000000000"
+    },
+    "114": {
+      "sha256": "5df3e3b04861b5ad02d49de6081153c7abbdd1d106a26253238aea7fd1739354",
+      "name": "Dub Ride",
+      "meta_hex": "000000000000000000"
+    },
+    "115": {
+      "sha256": "5012fde615e3aab6db774f0172d418dc48cfdba24ab4c5ba8d8227adbb01e0a4",
+      "name": "Highways",
+      "meta_hex": "000000000000000000"
+    },
+    "116": {
+      "sha256": "1ebe268a4134ade000efc4b9d32bb0bc00b95941841b5a93ac8071e6ed59cd55",
+      "name": "Disco Bubble",
+      "meta_hex": "000000000000000000"
+    },
+    "117": {
+      "sha256": "0ae40f783edd51c7c3bece3a9579a889521c2a3e11844d3110d7eba331509136",
+      "name": "Spot On",
+      "meta_hex": "000000100001010000"
+    },
+    "118": {
+      "sha256": "7e8c7a49fb0a9315ed32e78f768992cd307f4fb8cb0c81659ae336a986cbf703",
+      "name": "Happiness",
+      "meta_hex": "000100100000010000"
+    }
+  }
+}

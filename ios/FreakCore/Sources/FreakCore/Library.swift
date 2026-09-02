@@ -26,9 +26,12 @@ public struct LibraryEntry: Sendable, Equatable, Identifiable {
     public let slot: Int?            // desired device slot; at most one entry per slot
     public let addedAt: String
     public let tags: [String]
+    public let category: Category    // editable; auto-filled from meta[7] on device import
+    public let favorite: Bool
 
     public init(id: String, name: String, sha256: String, metaHex: String,
-                slot: Int?, addedAt: String, tags: [String]) {
+                slot: Int?, addedAt: String, tags: [String],
+                category: Category = .uncategorized, favorite: Bool = false) {
         self.id = id
         self.name = name
         self.sha256 = sha256
@@ -36,12 +39,38 @@ public struct LibraryEntry: Sendable, Equatable, Identifiable {
         self.slot = slot
         self.addedAt = addedAt
         self.tags = tags
+        self.category = category
+        self.favorite = favorite
     }
 
-    fileprivate func with(name: String? = nil, slot: Int?? = nil) -> LibraryEntry {
+    fileprivate func with(name: String? = nil, slot: Int?? = nil,
+                          tags: [String]? = nil, category: Category? = nil,
+                          favorite: Bool? = nil) -> LibraryEntry {
         LibraryEntry(id: id, name: name ?? self.name, sha256: sha256,
                      metaHex: metaHex, slot: slot ?? self.slot,
-                     addedAt: addedAt, tags: tags)
+                     addedAt: addedAt, tags: tags ?? self.tags,
+                     category: category ?? self.category,
+                     favorite: favorite ?? self.favorite)
+    }
+}
+
+/// Pure read helpers over a loaded entry array, so the UI stays UI-only:
+/// category chip counts and the tag universe are computed in the core.
+public enum Attributes {
+    /// Count entries per Category. Every Category key present (0 when none),
+    /// so the UI renders a stable chip row.
+    public static func categoryCensus(_ entries: [LibraryEntry]) -> [Category: Int] {
+        var counts: [Category: Int] = [:]
+        for c in Category.allCases { counts[c] = 0 }
+        for e in entries { counts[e.category, default: 0] += 1 }
+        return counts
+    }
+
+    /// Sorted unique tag set across entries.
+    public static func allTags(_ entries: [LibraryEntry]) -> [String] {
+        var seen = Set<String>()
+        for e in entries { seen.formUnion(e.tags) }
+        return seen.sorted()
     }
 }
 
@@ -114,7 +143,11 @@ public actor Library {
                 id: id, name: name, sha256: sha256, metaHex: metaHex,
                 slot: (d["slot"] as? NSNumber)?.intValue,
                 addedAt: d["added_at"] as? String ?? "",
-                tags: d["tags"] as? [String] ?? []))
+                tags: d["tags"] as? [String] ?? [],
+                // additive back-compat: an index predating these keys loads
+                // with defaults (category=uncategorized, favorite=false).
+                category: Category.fromSlug(d["category"] as? String ?? "uncategorized"),
+                favorite: (d["favorite"] as? NSNumber)?.boolValue ?? false))
         }
         return Library(root: root, entries: entries)
     }
@@ -127,7 +160,8 @@ public actor Library {
                  "meta_hex": e.metaHex,
                  "slot": e.slot.map { $0 as Any } ?? NSNull(),  // null written explicitly
                  "added_at": e.addedAt,
-                 "tags": e.tags]
+                 "tags": e.tags,
+                 "category": e.category.slug, "favorite": e.favorite]
             },
         ]
         try AtomicFile.write(try jsonData(payload),
@@ -140,6 +174,33 @@ public actor Library {
 
     private nonisolated func blobPath(_ sha256: String) -> URL {
         root.appendingPathComponent("blobs").appendingPathComponent("\(sha256).bin")
+    }
+
+    /// Write the blob content-addressed iff absent; return its sha256. The
+    /// blob half of add(), reused by the collection builders.
+    private func ensureBlob(_ blob: Data) throws -> String {
+        let sha = Wire.digest(blob)
+        let path = blobPath(sha)
+        if !FileManager.default.fileExists(atPath: path.path) {
+            do {
+                try FileManager.default.createDirectory(
+                    at: path.deletingLastPathComponent(),
+                    withIntermediateDirectories: true)
+                try blob.write(to: path)
+            } catch {
+                throw FreakError.integrity(path: path.path,
+                                           detail: "cannot write blob: \(error)")
+            }
+        }
+        return sha
+    }
+
+    private nonisolated func collectionsDir() -> URL {
+        root.appendingPathComponent("collections")
+    }
+
+    private nonisolated func collectionPath(_ id: String) -> URL {
+        collectionsDir().appendingPathComponent("\(id).json")
     }
 
     // ---------------------------------------------------------------- reads
@@ -199,35 +260,53 @@ public actor Library {
     /// share one blob sha under different names). Assigning a slot clears
     /// any other entry's claim first.
     @discardableResult
-    public func add(_ preset: Preset, slot: Int? = nil,
-                    tags: [String] = []) throws -> LibraryEntry {
+    public func add(_ preset: Preset, slot: Int? = nil, tags: [String] = [],
+                    category: Category = .uncategorized,
+                    favorite: Bool = false) throws -> LibraryEntry {
         if let slot, !(0..<Wire.slots).contains(slot) {
             throw FreakError.slotOutOfRange(slot: slot)
         }
-        let sha = preset.sha256
-        let path = blobPath(sha)
-        if !FileManager.default.fileExists(atPath: path.path) {
-            do {
-                try FileManager.default.createDirectory(
-                    at: path.deletingLastPathComponent(),
-                    withIntermediateDirectories: true)
-                try preset.blob.write(to: path)
-            } catch {
-                throw FreakError.integrity(path: path.path,
-                                           detail: "cannot write blob: \(error)")
-            }
-        }
+        let sha = try ensureBlob(preset.blob)
         let entry = LibraryEntry(
             // uuid4 hex, lowercase, 32 chars, NO hyphens (Python uuid4().hex)
             id: UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased(),
             name: preset.name, sha256: sha, metaHex: preset.meta.hexString,
-            slot: slot, addedAt: isoNow(), tags: tags)
+            slot: slot, addedAt: isoNow(), tags: tags,
+            category: category, favorite: favorite)
         if let slot {
             clearSlotClaims(slot)
         }
         entriesList.append(entry)
         try save()
         return entry
+    }
+
+    /// Set the (editable) category attribute. Rewrites the index atomically.
+    @discardableResult
+    public func setCategory(id: String, to category: Category) throws -> LibraryEntry {
+        try replaceEntry(id: id) { $0.with(category: category) }
+    }
+
+    /// Set the favorite flag. Rewrites the index atomically.
+    @discardableResult
+    public func setFavorite(id: String, to favorite: Bool) throws -> LibraryEntry {
+        try replaceEntry(id: id) { $0.with(favorite: favorite) }
+    }
+
+    /// Replace-whole the tag set (the UI owns add/remove; the core stores the
+    /// final set). Rewrites the index atomically.
+    @discardableResult
+    public func setTags(id: String, to tags: [String]) throws -> LibraryEntry {
+        try replaceEntry(id: id) { $0.with(tags: tags) }
+    }
+
+    private func replaceEntry(id: String,
+                              _ transform: (LibraryEntry) -> LibraryEntry) throws -> LibraryEntry {
+        let e = try entry(id: id)
+        let new = transform(e)
+        entriesList[entriesList.firstIndex(of: e)!] = new
+        try save()
+        return new
     }
 
     /// Validates the name.
@@ -246,10 +325,27 @@ public actor Library {
     public func remove(id: String) throws {
         let e = try entry(id: id)
         entriesList.removeAll { $0.id == id }
-        if findBySha(e.sha256).isEmpty {
+        // Blob GC now spans collections: delete the blob only when no
+        // remaining entry AND no remaining collection references its sha256.
+        if !(try blobReferenced(e.sha256)) {
             try? FileManager.default.removeItem(at: blobPath(e.sha256))
         }
         try save()
+    }
+
+    /// True when any entry OR any collection references this sha256. Blob GC
+    /// spans collections, so deleting the last entry that shares a blob cannot
+    /// orphan a collection's occupant.
+    private func blobReferenced(_ sha256: String) throws -> Bool {
+        if entriesList.contains(where: { $0.sha256 == sha256 }) {
+            return true
+        }
+        for coll in try collections() {
+            if coll.slots.values.contains(where: { $0.sha256 == sha256 }) {
+                return true
+            }
+        }
+        return false
     }
 
     /// Assigning a slot clears any other entry's claim to that slot.
@@ -309,11 +405,152 @@ public actor Library {
             if existing.contains(key) {
                 continue
             }
+            // Auto-fill category from the device byte meta[7]; this is the
+            // ONLY place category is derived from meta. meta is present here
+            // (meta == nil records are skipped above).
             let entry = try add(Preset(name: name, blob: r.blob!, meta: meta),
-                                slot: r.slot)
+                                slot: r.slot,
+                                category: Category.fromDeviceByte([UInt8](meta)[7]))
             existing.insert(key)
             added.append(entry)
         }
         return added
+    }
+
+    // ---------------------------------------------------------- collections
+
+    /// Every <root>/collections/*.json, parsed; ascending by createdAt then
+    /// id. Missing dir -> [].
+    public func collections() throws -> [PresetCollection] {
+        let cdir = collectionsDir()
+        var isDir: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: cdir.path, isDirectory: &isDir),
+              isDir.boolValue else {
+            return []
+        }
+        let files = try FileManager.default.contentsOfDirectory(
+            at: cdir, includingPropertiesForKeys: nil)
+            .filter { $0.pathExtension == "json" }
+            .sorted { $0.lastPathComponent < $1.lastPathComponent }
+        var out: [PresetCollection] = []
+        for path in files {
+            out.append(try loadCollection(path))
+        }
+        out.sort { ($0.createdAt, $0.id) < ($1.createdAt, $1.id) }
+        return out
+    }
+
+    public func collection(id: String) throws -> PresetCollection {
+        let path = collectionPath(id)
+        guard FileManager.default.fileExists(atPath: path.path) else {
+            throw FreakError.collectionNotFound(id: id)
+        }
+        return try loadCollection(path)
+    }
+
+    private func loadCollection(_ path: URL) throws -> PresetCollection {
+        let object: Any
+        do {
+            object = try JSONSerialization.jsonObject(with: try Data(contentsOf: path))
+        } catch {
+            throw FreakError.libraryCorrupt(path: path.path,
+                                            detail: String(describing: error))
+        }
+        guard let d = object as? [String: Any] else {
+            throw FreakError.libraryCorrupt(path: path.path, detail: "not a JSON object")
+        }
+        return try CollectionCodec.fromJSON(d, path: path.path)
+    }
+
+    public func saveCollection(_ coll: PresetCollection) throws {
+        try FileManager.default.createDirectory(at: collectionsDir(),
+                                                withIntermediateDirectories: true)
+        try AtomicFile.write(try jsonData(CollectionCodec.toJSON(coll)),
+                             to: collectionPath(coll.id))
+    }
+
+    @discardableResult
+    public func renameCollection(id: String, to name: String) throws -> PresetCollection {
+        let renamed = try collection(id: id).renamed(name)
+        try saveCollection(renamed)
+        return renamed
+    }
+
+    public func deleteCollection(id: String) throws {
+        let coll = try collection(id: id)                 // .collectionNotFound
+        let shas = Set(coll.slots.values.map(\.sha256))
+        try? FileManager.default.removeItem(at: collectionPath(id))
+        for sha in shas where !(try blobReferenced(sha)) {  // GC now the file is gone
+            try? FileManager.default.removeItem(at: blobPath(sha))
+        }
+    }
+
+    /// Read blobs/<ref.sha256>.bin, re-hash (.integrity on rot/missing), build
+    /// ref.toPreset(blob). The standard resolver for apply.
+    public func presetForRef(_ ref: PresetRef) throws -> Preset {
+        let path = blobPath(ref.sha256)
+        guard let blob = try? Data(contentsOf: path) else {
+            throw FreakError.integrity(path: path.path, detail: "blob file missing")
+        }
+        if Wire.digest(blob) != ref.sha256 {
+            throw FreakError.integrity(path: path.path,
+                                       detail: "sha256 mismatch (bit rot?)")
+        }
+        return try ref.toPreset(blob: blob)
+    }
+
+    // ---------------------------------------------- collection builders
+
+    /// Store each recorded blob (content-addressed) and build a collection of
+    /// PresetRefs at each slot. Requires kept blobs + hashes. Skips records
+    /// whose name read failed (meta == nil). Provenance kind = deviceSnapshot,
+    /// source defaults to snapshot.takenAt. Saved before return.
+    @discardableResult
+    public func collectionFromSnapshot(_ snapshot: DeviceSnapshot, name: String,
+                                       source: String = "") throws -> PresetCollection {
+        let records = snapshot.records
+        guard records.allSatisfy({ $0.blob != nil }) else {
+            throw FreakError.snapshotMissingBlobs
+        }
+        guard snapshot.hasHashes else {
+            throw FreakError.snapshotMissingHashes
+        }
+        var slots: [Int: PresetRef] = [:]
+        for r in records {
+            guard let meta = r.meta else { continue }   // name read failed: no faithful meta
+            let sha = try ensureBlob(r.blob!)
+            slots[r.slot] = PresetRef(sha256: sha, name: r.name ?? "",
+                                      metaHex: meta.hexString)
+        }
+        let prov = Provenance(kind: .deviceSnapshot,
+                              source: source.isEmpty ? snapshot.takenAt : source)
+        let coll = PresetCollection.new(name: name, provenance: prov, slots: slots)
+        try saveCollection(coll)
+        return coll
+    }
+
+    /// Store blobs, add one Uncategorized library entry per placed item, build
+    /// and save an importedBank collection. Skips items with no blob or no
+    /// slot. Returns (collection, addedEntries).
+    @discardableResult
+    public func collectionFromBank(_ items: [BankItem], name: String,
+                                   source: String) throws -> (PresetCollection, [LibraryEntry]) {
+        var slots: [Int: PresetRef] = [:]
+        var added: [LibraryEntry] = []
+        for item in items {
+            guard let blob = item.blob, let slot = item.slot else {
+                continue     // empty/Init-only slot, or unplaceable filename
+            }
+            let meta = item.meta.count == 9 ? item.meta : Data(count: 9)
+            let preset = try Preset(name: item.name, blob: blob, meta: meta)
+            let entry = try add(preset, slot: slot)      // Uncategorized default
+            slots[slot] = PresetRef(sha256: entry.sha256, name: preset.name,
+                                    metaHex: meta.hexString)
+            added.append(entry)
+        }
+        let prov = Provenance(kind: .importedBank, source: source)
+        let coll = PresetCollection.new(name: name, provenance: prov, slots: slots)
+        try saveCollection(coll)
+        return (coll, added)
     }
 }

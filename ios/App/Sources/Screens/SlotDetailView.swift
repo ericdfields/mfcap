@@ -70,6 +70,14 @@ struct SlotDetailView: View {
                         SlotFlagBadge(flag: .verifyFailed)
                     }
                     if row?.busy == true { ProgressView().controlSize(.small) }
+                    Spacer()
+                    FavoriteToggle(
+                        isFavorite: row?.sha256
+                            .map { model.libraryModel.favoritedSha($0) } ?? false,
+                        disabledReason: row?.sha256 == nil
+                            ? "read this slot to favorite it" : nil) {
+                        model.toggleFavoriteForSlot(slot)
+                    }
                 }
             }
             if row?.nameFailed == true {
@@ -253,37 +261,40 @@ struct SlotDetailView: View {
 
 // ------------------------------------------------------------- components
 
-/// Category byte (meta byte 7 = long-0x52 payload[10]); display only (§7.4).
+/// Category byte (meta byte 7 = long-0x52 payload[10]), decoded via the one
+/// hardware-confirmable table (data-model spec §1.1). Read-only on a device
+/// slot — the slot has no editable index entry; this is exactly what will
+/// auto-fill when the slot is saved to the library, where it becomes editable
+/// (UX addendum §22.3). Editing here would rewrite meta; v1 never does.
 struct CategoryByteRow: View {
     let meta: Data
     @State private var showInfo = false
 
     private var byte: UInt8? {
         guard meta.count >= 8 else { return nil }
-        return meta[meta.index(meta.startIndex, offsetBy: 7)]
+        return Array(meta)[7]
     }
 
     var body: some View {
         LabeledContent("Category") {
             HStack(spacing: 6) {
                 if let byte {
-                    if let label = CategoryByte.label(for: byte) {
-                        Text("\(label) (\(Format.hexByte(byte)))")
-                    } else {
-                        Text(Format.hexByte(byte))
-                            .font(.body.monospaced())
-                        Button {
-                            showInfo = true
-                        } label: {
-                            Image(systemName: "info.circle")
-                        }
-                        .popover(isPresented: $showInfo) {
-                            Text(CategoryByte.infoCopy)
-                                .font(.callout)
-                                .padding(16)
-                                .frame(idealWidth: 300)
-                                .presentationCompactAdaptation(.popover)
-                        }
+                    Text("\(FreakCore.Category.fromDeviceByte(byte).displayName) "
+                         + "(\(Format.hexByte(byte)))")
+                    Button {
+                        showInfo = true
+                    } label: {
+                        Image(systemName: "info.circle")
+                    }
+                    .buttonStyle(.plain)
+                    .popover(isPresented: $showInfo) {
+                        Text("Category as stored by the synth. Confirmable "
+                             + "against hardware; correct it after you save the "
+                             + "preset to the library.")
+                            .font(.callout)
+                            .padding(16)
+                            .frame(idealWidth: 300)
+                            .presentationCompactAdaptation(.popover)
                     }
                 } else {
                     Text("—")

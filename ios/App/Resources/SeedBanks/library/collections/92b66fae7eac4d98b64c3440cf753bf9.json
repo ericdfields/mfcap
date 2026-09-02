@@ -1,0 +1,137 @@
+{
+  "schema": 1,
+  "id": "92b66fae7eac4d98b64c3440cf753bf9",
+  "name": "Hypnoscillator",
+  "created_at": "2026-09-01T22:40:55",
+  "provenance": {
+    "kind": "imported_bank",
+    "source": "Hypnoscillator"
+  },
+  "slots": {
+    "0": {
+      "sha256": "3a4a37ac4de0f88d2f13a193281b7e7bc9f485533a31e2019a88ca4c047d2375",
+      "name": "Slap",
+      "meta_hex": "000000000000000000"
+    },
+    "1": {
+      "sha256": "a11424aaa75d1e03403df4d0d617a7c760787418665d38575442c35d42c0a831",
+      "name": "Psyfm",
+      "meta_hex": "000000000000000000"
+    },
+    "2": {
+      "sha256": "6ddb4bcc7f0fdc8f7717cb5f7eee84a62167fe139cf7517456ee9e94631be650",
+      "name": "KrisTaL",
+      "meta_hex": "000000000000000000"
+    },
+    "3": {
+      "sha256": "d80be019254f4bdf32531b413eaa9e89b9b6ac3b1b0a513f1d87778c19063cb6",
+      "name": "Lefm",
+      "meta_hex": "000000000000000000"
+    },
+    "4": {
+      "sha256": "d050fefaa098005e31d76249d87705fcdc47cbec2c77624ca573d4a513851090",
+      "name": "ProtonATMOS",
+      "meta_hex": "000000000000000000"
+    },
+    "5": {
+      "sha256": "7e4e58f4c7ba684e09a08b55df20367128f90593f4925a2e574feeeb9d2c4b2e",
+      "name": "VoiceOfMonk",
+      "meta_hex": "000000000000000000"
+    },
+    "6": {
+      "sha256": "37e4d8418128285b7c01aca6318a990fe8ff4dac4188675ffa6e7103165544ab",
+      "name": "FrenetRise",
+      "meta_hex": "000000000000000000"
+    },
+    "7": {
+      "sha256": "1d09bcd6d265d5b74b2d974646735745b73aca1ad96811b52b066551a6b34f15",
+      "name": "Proton",
+      "meta_hex": "000000000000000000"
+    },
+    "8": {
+      "sha256": "17c26bb98918a5c647d863de006b88950dca0a6901d1d6d955b7f89556954eec",
+      "name": "Speechefix",
+      "meta_hex": "000000000000000000"
+    },
+    "9": {
+      "sha256": "c8257d3cb23fa14a2fbd3607973c3a4c2e2d6e9f678dabc3e8bce607ed18614d",
+      "name": "PlayMeChord",
+      "meta_hex": "000000000000000000"
+    },
+    "10": {
+      "sha256": "4dde3e75490db53cf7965f94f25a57b1a084e758b08b14b06911e16dc7bb33c1",
+      "name": "Sawpsy",
+      "meta_hex": "000000000000000000"
+    },
+    "11": {
+      "sha256": "7e07e7574e5c05380b4c675d838f259888a38d2d966592e45677c64e86036cea",
+      "name": "Hats",
+      "meta_hex": "000000000000000000"
+    },
+    "105": {
+      "sha256": "53b89de6df9d2be04f24d0c15ad33188bfee8b81d6443ad1e65c1e4434b8d50d",
+      "name": "BassMeFree",
+      "meta_hex": "000000000000000000"
+    },
+    "106": {
+      "sha256": "25d28cb78a1437d41ef9ea6be269f0bcec468605550a8ebb3e799bc24a0d7927",
+      "name": "Cloudy",
+      "meta_hex": "000000000000000000"
+    },
+    "107": {
+      "sha256": "86790c398580cd971b723faef437914d56b8d81407d13fc2284c4b11a2752442",
+      "name": "Barnave",
+      "meta_hex": "000000000000000000"
+    },
+    "108": {
+      "sha256": "de0fa915aebacc8bdd10418fa94efd97226de54f7e342c8381be619171024885",
+      "name": "Orangevoice",
+      "meta_hex": "000000000000000000"
+    },
+    "109": {
+      "sha256": "5c9434209e990f6f3b7972fb3c7f93a7572ace3ef026170fe1378f1d0e22d585",
+      "name": "Gong",
+      "meta_hex": "000000000000000000"
+    },
+    "110": {
+      "sha256": "3e569cdb99c8df544564f5fe16ff34a57a321732f85a885ad864237399ccbeda",
+      "name": "Strange",
+      "meta_hex": "000000000000000000"
+    },
+    "112": {
+      "sha256": "57a36f6d0d4d987a2d8c7f3fe02c7a174e74c1abae4e1fb339ce8b646e40944d",
+      "name": "JP Keyings",
+      "meta_hex": "000000000000000000"
+    },
+    "113": {
+      "sha256": "1d523766a6c397107abd45516a5892db6f55273990b6772fd742bdfedc2e4ac3",
+      "name": "Ensemble",
+      "meta_hex": "000000000000000000"
+    },
+    "114": {
+      "sha256": "ccef482ee326c977dd5840d19511d7fff1ce10feeaf98ad7feb30fed62709a87",
+      "name": "Lafm",
+      "meta_hex": "000000000000000000"
+    },
+    "115": {
+      "sha256": "2eadfeb659350e0485e2153c18fbdddb095df5e5eb1c225ae4ab7ad26eb9075a",
+      "name": "Narvax",
+      "meta_hex": "000000000000000000"
+    },
+    "116": {
+      "sha256": "b1bb134d2869710e4be7c09a15f6d65538a6edadcf7a1d946e303e608b384073",
+      "name": "Kick",
+      "meta_hex": "000000000000000000"
+    },
+    "117": {
+      "sha256": "53bbf145f2f7cc671ee4361bdb63cb25c0fae95b3ee55ef01bd2b988a4fb8ead",
+      "name": "Hihat",
+      "meta_hex": "000000000000000000"
+    },
+    "118": {
+      "sha256": "9ee6add2e91efb4cf335ae94125d887a7eba7b868a9215942b799cfd702a5eeb",
+      "name": "Hat",
+      "meta_hex": "000000000000000000"
+    }
+  }
+}

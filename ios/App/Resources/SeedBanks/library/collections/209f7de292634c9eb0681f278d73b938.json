@@ -1,0 +1,172 @@
+{
+  "schema": 1,
+  "id": "209f7de292634c9eb0681f278d73b938",
+  "name": "Tech Loop",
+  "created_at": "2026-09-01T22:40:56",
+  "provenance": {
+    "kind": "imported_bank",
+    "source": "Tech Loop"
+  },
+  "slots": {
+    "0": {
+      "sha256": "e8d6e5fba8e4d24260be9c9b11490732d6654d22e3e6a75132cb9e4a1614419f",
+      "name": "ModalTek",
+      "meta_hex": "000000000000000000"
+    },
+    "1": {
+      "sha256": "c47560d772fdc20b1d96d67f5602baaf541220cfdc2b4244557c2dcf6453bc7b",
+      "name": "Organism",
+      "meta_hex": "000000000000000000"
+    },
+    "2": {
+      "sha256": "97910d586ac804ad47e60498e0ba12034c73137ebdea4cf112ebc7b73888d2e5",
+      "name": "Testuo",
+      "meta_hex": "000000000000000000"
+    },
+    "3": {
+      "sha256": "0b8cdbfc5141da1e25e52469a3ffe91a078829df87a27e96950b56c9e5162c22",
+      "name": "Psy Phaze",
+      "meta_hex": "000000000000000000"
+    },
+    "4": {
+      "sha256": "3e7fd7ed25d2d9873ce4811b50996f686e3997cf779f98d6c79f0867bead6709",
+      "name": "BeeFM",
+      "meta_hex": "000000000000000000"
+    },
+    "5": {
+      "sha256": "3eb88f26d117fd7198ff4f1fe522f677a7b4ae979afc005edd1921d10d5613c9",
+      "name": "Bassowelt",
+      "meta_hex": "000000000000000000"
+    },
+    "6": {
+      "sha256": "497cfc73362c2b2397d114b376167f8ee990b4958c867435b2a1804bdee85db7",
+      "name": "VidaXL",
+      "meta_hex": "000000000000000000"
+    },
+    "7": {
+      "sha256": "9cf760bb86efec0e5c8847bdf682cf09371aa62059614a6d6620e09543a68057",
+      "name": "Tricone",
+      "meta_hex": "000000000000000000"
+    },
+    "8": {
+      "sha256": "d0e72490585bd29bd2bbbf99774fb09923559b6de8b4cecc944963b87aaa4f2c",
+      "name": "Crush Wave",
+      "meta_hex": "000000000000000000"
+    },
+    "9": {
+      "sha256": "769f2e7839ef3e83c70b6b3f3e3ae942f895fb5bcfce3146fbb4ad4bfd6d142a",
+      "name": "Cruiser",
+      "meta_hex": "000000000000000000"
+    },
+    "10": {
+      "sha256": "bd0394cf7deeccdffca51e19e8947e05406df14bc255f9935d632d7c2c3960ba",
+      "name": "Polycrystallin",
+      "meta_hex": "000000000000000000"
+    },
+    "11": {
+      "sha256": "a3156cd64cd4e9af3772543f5bfb1f9f22cf9990f4872d43e6c755a05919e40e",
+      "name": "Punker",
+      "meta_hex": "000000000000000000"
+    },
+    "99": {
+      "sha256": "16823cba82fabe2a9a09283859fa2b3ebe333beaa49a0f3df1af92b04236f03c",
+      "name": "FreakSlave",
+      "meta_hex": "000000000000000000"
+    },
+    "100": {
+      "sha256": "ab6b2370d5d348bd46a9ffebd32dad36aa47c5d77cfdbbb1e8437a2e05b9a867",
+      "name": "Clays",
+      "meta_hex": "000000000000000000"
+    },
+    "101": {
+      "sha256": "f00ef19c79ede55b311718f94cf6f758f43aa612bd693ebf49f66ccebfc9e6de",
+      "name": "FM Tension",
+      "meta_hex": "000000000000000000"
+    },
+    "102": {
+      "sha256": "fb76377b85ed772c44fee62e4b832d3ff360ae1a5cc12614f35ae1bcab66829f",
+      "name": "Actraiser",
+      "meta_hex": "000000000000000000"
+    },
+    "103": {
+      "sha256": "e5e0fcefb9654ae7de013c9374a74bbfd650377cbea3e83c16870566168a563f",
+      "name": "Chaotix",
+      "meta_hex": "000000000000000000"
+    },
+    "104": {
+      "sha256": "31b2e4762ec4ee9b2cb6f1fb9c02249a57185c1ed02e5622dc8cc43017856bda",
+      "name": "Moebius",
+      "meta_hex": "000000000000000000"
+    },
+    "105": {
+      "sha256": "6eb4ad4a1efc217ba4bfd1877f943fce13ade400d6ee397f13ef62809244ae3f",
+      "name": "Dial Mode",
+      "meta_hex": "000000000000000000"
+    },
+    "106": {
+      "sha256": "20e7bda38d7b4e40112c7bff7391024614511c96a3dcb57ebc7e55c2700b6d63",
+      "name": "Rotary",
+      "meta_hex": "000000000000000000"
+    },
+    "107": {
+      "sha256": "2b35a72a4cb1cdfef60ac9a6945e9d3aa6feab4780dfbde480e49d2a0d2b5501",
+      "name": "A is 4",
+      "meta_hex": "000000000000000000"
+    },
+    "108": {
+      "sha256": "5fb7c80d83bf7c24c2da5fe30e44ce13662e8b451dd89b29377b47ed1af5d63c",
+      "name": "Virax",
+      "meta_hex": "000000000000000000"
+    },
+    "109": {
+      "sha256": "5b74bad86a2323a2b4ad8abc1add8c113432730b84514157b52675dd05381462",
+      "name": "Nostrils",
+      "meta_hex": "000000000000000000"
+    },
+    "110": {
+      "sha256": "b7de2c8e6dd31a663379b8e07ca34f7d542c94f73317dbcb2fd6a5580f0e16ac",
+      "name": "Macrowave",
+      "meta_hex": "000000000000000000"
+    },
+    "111": {
+      "sha256": "ee8c6ba0f324fdc5a472946646c94f7aa6aa719397d2974c44a57c0c73a2174c",
+      "name": "Smooth A",
+      "meta_hex": "000000000000000000"
+    },
+    "112": {
+      "sha256": "273727c125e4b9bf99f866bb1af545049044d5d81e93db03cca1c918e1065642",
+      "name": "Drill",
+      "meta_hex": "000000000000000000"
+    },
+    "113": {
+      "sha256": "fd2de2bd27ab38ff39aaf1728f1db7be438865b3a0f349cb06c37da636cd4444",
+      "name": "Numeru",
+      "meta_hex": "000000000000000000"
+    },
+    "114": {
+      "sha256": "50a9902bccb8e35830f97690d48b0b781a054cdfd6f4a8e3a5b70d18df4a5ec5",
+      "name": "Mutter",
+      "meta_hex": "000000000000000000"
+    },
+    "115": {
+      "sha256": "db75cd19e9858f4146be5227144ff86a603425b8f510ca50739dffbf75d0a97f",
+      "name": "3 3 3",
+      "meta_hex": "000000000000000000"
+    },
+    "116": {
+      "sha256": "d13f640a55000c72bc27800abf6c3b696f17ac52f7840d2348440b4adaa4a496",
+      "name": "MuddyMod",
+      "meta_hex": "000000000000000000"
+    },
+    "117": {
+      "sha256": "33245d546ac8c3fe14ff870b5128b0d1e389f2ae304a3e38226a7aedc4958d77",
+      "name": "Camion",
+      "meta_hex": "000000000000000000"
+    },
+    "118": {
+      "sha256": "b899a981980fe9a7be6d3f208ec99ee6a2ed11e932e2a402614eec3567fc2330",
+      "name": "Malice",
+      "meta_hex": "000000000000000000"
+    }
+  }
+}

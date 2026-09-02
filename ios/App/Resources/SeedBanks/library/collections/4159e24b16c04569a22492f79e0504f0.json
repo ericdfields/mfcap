@@ -1,0 +1,172 @@
+{
+  "schema": 1,
+  "id": "4159e24b16c04569a22492f79e0504f0",
+  "name": "Arp Monster",
+  "created_at": "2026-09-01T22:40:54",
+  "provenance": {
+    "kind": "imported_bank",
+    "source": "Arp Monster"
+  },
+  "slots": {
+    "0": {
+      "sha256": "a2d6cc03ed29f1eb68b2549f4bfc9c4d571af440df79448926cc40eacbe6ae4a",
+      "name": "Argument",
+      "meta_hex": "000000000000000000"
+    },
+    "1": {
+      "sha256": "9b3436c11ef553da67acdb612e3842a081dfbd0b1b2a75a09445ccbcd10b2252",
+      "name": "Bass It",
+      "meta_hex": "000000000000000000"
+    },
+    "2": {
+      "sha256": "f1236dd2081f5c993f9ef13daf83c695fed23bbf0eeb8124e3557693b1a13017",
+      "name": "Red Pill",
+      "meta_hex": "000000000000000000"
+    },
+    "3": {
+      "sha256": "61d827aa0804c09716c760ff9a9c992167082bb18d7d9fbe11aa77bf570e0ff2",
+      "name": "Sync Pluck",
+      "meta_hex": "000000000000000000"
+    },
+    "4": {
+      "sha256": "d0aee6b6c0df3efe064a9432d4b987c62b3c084f374ca764eea4cd76e96673a4",
+      "name": "Glide Me",
+      "meta_hex": "000000000000000000"
+    },
+    "5": {
+      "sha256": "ef0db6a6c48b816050f4d29bc7ffbda5763fcb2ec7bddf5570d6a06e550b49b9",
+      "name": "Para Pluck",
+      "meta_hex": "000000000000000000"
+    },
+    "6": {
+      "sha256": "7817ea917a279899654a09445a4a3aefc8756a4c30609ddd739504df7cc39b48",
+      "name": "Jeep",
+      "meta_hex": "000000000000000000"
+    },
+    "7": {
+      "sha256": "b646252d5961e062a3659512c715b72218fd666952466517c00b73f530320ebf",
+      "name": "Feel Press",
+      "meta_hex": "000000000000000000"
+    },
+    "8": {
+      "sha256": "0cd115f678d8aa424b6a9f9cdd7de3b0df8a833e9d3d694d634d756710ab2ee8",
+      "name": "Move",
+      "meta_hex": "000000000000000000"
+    },
+    "9": {
+      "sha256": "5ac9368d03396bcb8b415ca10dbee61e66b1003ea5fe21bddc70f8556ab0774b",
+      "name": "Bandpass",
+      "meta_hex": "000000000000000000"
+    },
+    "10": {
+      "sha256": "22983aab6d70d4942e5150fd4b7e3fad66c9a51e22edf136fa36be690c35d28b",
+      "name": "Cat",
+      "meta_hex": "000000000000000000"
+    },
+    "11": {
+      "sha256": "c57a7664cc0bff804b111803cacccf6fa935817e55045b01790b110b85986bf4",
+      "name": "Squelch",
+      "meta_hex": "000000000000000000"
+    },
+    "99": {
+      "sha256": "1d2d216becb2a99b95a2b5cf33c14746156ee785bc148a40ed4fbb27b261c9fb",
+      "name": "OB FM",
+      "meta_hex": "000000000000000000"
+    },
+    "100": {
+      "sha256": "dcfce345871e5a608b20baf18fe590fbfcf21273bd9d1853f38eb433b1f12b13",
+      "name": "Harmo X",
+      "meta_hex": "000000000000000000"
+    },
+    "101": {
+      "sha256": "740600f61061073bbc9610611bc847d5e6661ccd8a44c92a8112361f8a978ffa",
+      "name": "Expression",
+      "meta_hex": "000000000000000000"
+    },
+    "102": {
+      "sha256": "2cf3310598d29f3788179fc7fdaf05de8532373b5710c6f0a10ff1d8ed64da31",
+      "name": "Form",
+      "meta_hex": "000000000000000000"
+    },
+    "103": {
+      "sha256": "b99ab005f16c8c36ade88f5fcc05616403ca156ea1cac48c536cb1c18f09148a",
+      "name": "Morf",
+      "meta_hex": "000000000000000000"
+    },
+    "104": {
+      "sha256": "7df4b042799b2af2f6f8d4dad3e0e4f772a0e4ce54d559c119e97c29b05650be",
+      "name": "Bell Chords",
+      "meta_hex": "000000000000000000"
+    },
+    "105": {
+      "sha256": "bdae219d879a415b72a9a048f58facbd060f85712514f142767db3d36e58a370",
+      "name": "Begin",
+      "meta_hex": "000000000000000000"
+    },
+    "106": {
+      "sha256": "30d761978c6414d10fc12bddb4bd5b0672dbd773fe7cd349b867821d635fba99",
+      "name": "Band",
+      "meta_hex": "000000000000000000"
+    },
+    "107": {
+      "sha256": "1776c7765fdbe3b4194d3ec288d2772a3b11a6c2c6eb9bc6cb8171ec2283573b",
+      "name": "Nine",
+      "meta_hex": "000000000000000000"
+    },
+    "108": {
+      "sha256": "fa000e4628a22126f6a0a8c9f695ffdbbda4372935550e30f17c151a2aaafc3f",
+      "name": "Enin",
+      "meta_hex": "000000000000000000"
+    },
+    "109": {
+      "sha256": "7947bc002282ce5a0ca38f0226e8c4269e16eac896789f3106068b1b628b42ee",
+      "name": "Uice",
+      "meta_hex": "000000000000000000"
+    },
+    "110": {
+      "sha256": "8c703c61cffb53290fc7d419af64e1a3be6a24b6c9c9cb57cf11cdccc778eb2c",
+      "name": "Mina",
+      "meta_hex": "000000000000000000"
+    },
+    "111": {
+      "sha256": "f8f6b3e69f4e99ce9ed8ceedfc1ab40ddf4a52f8abd141b7054f135496e5de76",
+      "name": "Play Chords",
+      "meta_hex": "000000000000000000"
+    },
+    "112": {
+      "sha256": "70b8d984935eacf9225661010f4ced2c0e8901d6039066087633300aed45b8ee",
+      "name": "London",
+      "meta_hex": "000000000000000000"
+    },
+    "113": {
+      "sha256": "d7702de4a5eb02c1b112c45f89e73e4a600ba45abd452ee91fb01c36fecde1bd",
+      "name": "XTC",
+      "meta_hex": "000000000000000000"
+    },
+    "114": {
+      "sha256": "462a4536ece729b24e93a386b5f482ed86dfe2520cfbc0d977aa083299d9ed6a",
+      "name": "Free",
+      "meta_hex": "000000000000000000"
+    },
+    "115": {
+      "sha256": "f53e4e6675f691f91c411b6ec0e534e10eaea2907f5cf6a7c4a7549875736109",
+      "name": "Solid",
+      "meta_hex": "000000000000000000"
+    },
+    "116": {
+      "sha256": "a6856ca75690ee33328b25fd4109b5ac9f5159ac4a78d154bfbf459b3d9f5a44",
+      "name": "Underscore",
+      "meta_hex": "000000000000000000"
+    },
+    "117": {
+      "sha256": "8c730a960510a42c6a59d324188a73a112b7155b1f29b3d128803fd563929f14",
+      "name": "Vocal Synth",
+      "meta_hex": "000000000000000000"
+    },
+    "118": {
+      "sha256": "381ad1b5b94f800fa157aa47c94065863da9d41eeadfd49afbfeb788e1882d95",
+      "name": "Edit",
+      "meta_hex": "000000000000000000"
+    }
+  }
+}

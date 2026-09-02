@@ -8,12 +8,71 @@ one dump/ack timeout.
 from __future__ import annotations
 
 import dataclasses
+import enum
 import threading
 from dataclasses import dataclass
-from typing import Callable, Optional, Tuple
+from typing import Callable, List, Optional, Tuple
 
 from .errors import BlobSizeError, ProtocolError
 from .protocol import BLOB_SIZE, META_LEN, digest, validate_name
+
+
+class Category(enum.Enum):
+    """Arturia MicroFreak preset category — the librarian's editable
+    attribute. Values are the stable wire slug used in the library index and
+    collection files by BOTH cores. Do NOT add categories beyond this
+    documented Arturia set."""
+    UNCATEGORIZED = "uncategorized"
+    BASS = "bass"
+    BRASS = "brass"
+    KEYS = "keys"
+    LEAD = "lead"
+    ORGAN = "organ"
+    PAD = "pad"
+    PERCUSSION = "percussion"
+    SEQUENCE = "sequence"
+    SFX = "sfx"
+    STRINGS = "strings"
+    TEMPLATE = "template"
+    VOCODER = "vocoder"
+
+    @classmethod
+    def from_device_byte(cls, byte: int) -> "Category":
+        """Decode meta[7]. Bytes outside the table -> UNCATEGORIZED."""
+        if 0 <= byte < len(_DEVICE_BYTE_TABLE):
+            return _DEVICE_BYTE_TABLE[byte]
+        return cls.UNCATEGORIZED
+
+    @classmethod
+    def from_slug(cls, slug: str) -> "Category":
+        """Parse an index/file slug. Unknown slug -> UNCATEGORIZED (forward
+        compatibility: a future core's category loads as uncategorized here,
+        never a crash)."""
+        try:
+            return cls(slug)
+        except ValueError:
+            return cls.UNCATEGORIZED
+
+    @property
+    def slug(self) -> str:
+        return self.value
+
+    @property
+    def display_name(self) -> str:
+        return "SFX" if self is Category.SFX else self.name.title().replace("_", " ")
+
+
+# THE one device-byte -> Category table. index == the device category byte
+# (meta[7] == long-0x52 payload[10]). HARDWARE-CONFIRMABLE: this index map is
+# NOT proven against ground truth (only slot-200's 0x03 is observed). Confirm
+# against a device, then correct here in ONE place; category is user-editable
+# so a wrong auto-fill is always fixable.
+_DEVICE_BYTE_TABLE: List[Category] = [
+    Category.UNCATEGORIZED, Category.BASS, Category.BRASS, Category.KEYS,
+    Category.LEAD, Category.ORGAN, Category.PAD, Category.PERCUSSION,
+    Category.SEQUENCE, Category.SFX, Category.STRINGS, Category.TEMPLATE,
+    Category.VOCODER,
+]
 
 
 @dataclass(frozen=True)
@@ -58,6 +117,19 @@ class Preset:
 
     def renamed(self, name: str) -> "Preset":
         return dataclasses.replace(self, name=name)
+
+
+@dataclass(frozen=True)
+class PresetRef:
+    """A slot occupant inside a PresetCollection: content (sha256) + the name
+    and meta needed to write it faithfully. Resolvable to a Preset given the
+    blob (Library.preset_for_ref)."""
+    sha256: str        # 64 lowercase hex; addresses blobs/<sha256>.bin
+    name: str          # validated printable ASCII (<= 23), as it should be written
+    meta_hex: str      # 18 lowercase hex chars (9 bytes), round-tripped verbatim
+
+    def to_preset(self, blob: bytes) -> "Preset":
+        return Preset(name=self.name, blob=blob, meta=bytes.fromhex(self.meta_hex))
 
 
 @dataclass(frozen=True)

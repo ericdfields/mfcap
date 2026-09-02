@@ -36,11 +36,21 @@ final class LibraryModel {
 
     var searchText = ""
     var sort: Sort = .name
+    /// Faceted-filter state (UX addendum §21.3). All compose with AND; the
+    /// browser and its chip grid read the same derived helpers below.
+    var categoryFilter: FreakCore.Category?          // nil = all categories
+    var tagFilter: Set<String> = []        // AND across selected tags
+    var favoritesOnly = false              // set by the Favorites selection (§24)
     /// Fires after any library mutation so dependents (sync diff) recompute.
     var onChange: (@MainActor () -> Void)?
 
-    init(root: URL) {
+    /// First-run seeding of the bundled starter library (README in
+    /// App/Resources/SeedBanks). Off for previews/tests (ephemeral sandboxes).
+    private let seedFromBundle: Bool
+
+    init(root: URL, seedFromBundle: Bool = false) {
         self.root = root
+        self.seedFromBundle = seedFromBundle
     }
 
     // ------------------------------------------------------------- opening
@@ -48,6 +58,11 @@ final class LibraryModel {
     /// Open-or-create (architecture spec §10.2 idiom). A corrupt index is a
     /// full-screen error naming the path — never silently deleted.
     func openOrCreate() {
+        // First launch with no user library: copy the bundled starter library
+        // in place before opening, so a new install opens fully populated.
+        if seedFromBundle {
+            SeedInstaller.installIfNeeded(libraryRoot: root)
+        }
         do {
             library = try Library.open(at: root)
             openFailure = nil
@@ -89,11 +104,29 @@ final class LibraryModel {
     // -------------------------------------------------------------- reads
 
     var tags: [String] {
-        Array(Set(entries.flatMap(\.tags))).sorted()
+        Attributes.allTags(entries)
     }
 
     func entry(id: String) -> LibraryEntry? {
         entries.first { $0.id == id }
+    }
+
+    /// Favorited entries in the current sort (UX addendum §24.3).
+    var favorites: [LibraryEntry] {
+        sortedForDisplay(entries.filter(\.favorite))
+    }
+
+    /// Does a favorited entry hold these exact bytes? Drives the device-row
+    /// and device-detail heart (UX addendum §24.2).
+    func favoritedSha(_ sha256: String) -> Bool {
+        entries.contains { $0.sha256 == sha256 && $0.favorite }
+    }
+
+    /// Per-category counts, faceted over every active facet EXCEPT the
+    /// category filter itself (standard faceted search, UX addendum §22.2).
+    /// Every FreakCore.Category key is present (0 when none) so the chip row is stable.
+    var categoryCounts: [FreakCore.Category: Int] {
+        Attributes.categoryCensus(entries.filter { matches($0, ignoreCategory: true) })
     }
 
     func entryClaiming(slot: SlotID) -> LibraryEntry? {
@@ -104,25 +137,43 @@ final class LibraryModel {
         entries.filter { $0.sha256 == sha256 }
     }
 
+    /// The browser's rows: every active facet (category ∧ tagFilter ∧
+    /// favorite ∧ search) plus the sidebar's legacy single-tag selection,
+    /// composed with AND (UX addendum §21.3), then sorted.
     func filtered(tag: String?) -> [LibraryEntry] {
-        var out = entries
-        if let tag { out = out.filter { $0.tags.contains(tag) } }
+        sortedForDisplay(entries.filter { entry in
+            matches(entry) && (tag == nil || entry.tags.contains(tag!))
+        })
+    }
+
+    /// One matcher, so the chip counts and the list can never disagree.
+    /// `ignoreCategory` powers the faceted category census (§22.2).
+    private func matches(_ entry: LibraryEntry,
+                         ignoreCategory: Bool = false) -> Bool {
+        if !ignoreCategory, let categoryFilter, entry.category != categoryFilter {
+            return false
+        }
+        if favoritesOnly, !entry.favorite { return false }
+        if !tagFilter.isSubset(of: Set(entry.tags)) { return false }
         let query = searchText.trimmingCharacters(in: .whitespaces).lowercased()
         if !query.isEmpty {
-            out = out.filter {
-                $0.name.lowercased().contains(query)
-                    || $0.tags.contains { $0.lowercased().contains(query) }
-            }
+            let hit = entry.name.lowercased().contains(query)
+                || entry.tags.contains { $0.lowercased().contains(query) }
+            if !hit { return false }
         }
+        return true
+    }
+
+    private func sortedForDisplay(_ list: [LibraryEntry]) -> [LibraryEntry] {
         switch sort {
         case .name:
-            return out.sorted {
+            return list.sorted {
                 ($0.name.lowercased(), $0.addedAt) < ($1.name.lowercased(), $1.addedAt)
             }
         case .dateAdded:
-            return out.sorted { $0.addedAt > $1.addedAt }
+            return list.sorted { $0.addedAt > $1.addedAt }
         case .slot:
-            return out.sorted {
+            return list.sorted {
                 ($0.slot ?? Int.max, $0.name) < ($1.slot ?? Int.max, $1.name)
             }
         }
@@ -153,12 +204,14 @@ final class LibraryModel {
 
     // ---------------------------------------------- local mutations (no device)
 
-    func add(_ preset: Preset, slot: SlotID?, tags: [String]) async throws
-        -> LibraryEntry {
+    func add(_ preset: Preset, slot: SlotID?, tags: [String],
+             category: FreakCore.Category = .uncategorized,
+             favorite: Bool = false) async throws -> LibraryEntry {
         guard let library else {
             throw FreakError.libraryNotFound(path: root.path)
         }
-        let entry = try await library.add(preset, slot: slot?.raw, tags: tags)
+        let entry = try await library.add(preset, slot: slot?.raw, tags: tags,
+                                          category: category, favorite: favorite)
         await refresh()
         return entry
     }
@@ -188,18 +241,73 @@ final class LibraryModel {
         return try await add(preset, slot: nil, tags: source.tags)
     }
 
-    /// Edit an entry's tags. The core has no in-place tag mutation, so this
-    /// is re-add (same bytes, same name, same slot claim, new tags) followed
-    /// by removal of the old entry — the entry id and added-at change, which
-    /// callers must expect. FLAGGED for a core-side `setTags` later.
+    // -------------------------------------------- attribute edits (id-stable)
+    //
+    // Backed by the core's in-place index mutators (data-model spec §2.4):
+    // the blob, id, slot claim, and added-at are all preserved; only the
+    // index entry is rewritten, atomically per edit. None touch the device.
+
+    /// Replace an entry's tags. The UI owns add/remove; the core stores the
+    /// final set (UX addendum §23.1). id-stable — no longer the re-add hack.
+    @discardableResult
     func setTags(id: String, tags: [String]) async throws -> LibraryEntry? {
-        guard let library, let old = entry(id: id) else { return nil }
-        let preset = try await preset(id: id)
-        try await library.remove(id: id)
-        let replacement = try await library.add(preset, slot: old.slot,
-                                                tags: tags)
+        guard let library else { return nil }
+        let updated = try await library.setTags(id: id, to: tags)
         await refresh()
-        return replacement
+        return updated
+    }
+
+    func addTag(id: String, _ tag: String) async {
+        let trimmed = tag.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty, let existing = entry(id: id) else { return }
+        // Case-insensitive de-dupe (UX addendum §23.1).
+        guard !existing.tags.contains(where: {
+            $0.lowercased() == trimmed.lowercased() }) else { return }
+        _ = try? await setTags(id: id, tags: existing.tags + [trimmed])
+    }
+
+    func removeTag(id: String, _ tag: String) async {
+        guard let existing = entry(id: id) else { return }
+        _ = try? await setTags(id: id, tags: existing.tags.filter { $0 != tag })
+    }
+
+    func setCategory(id: String, _ category: FreakCore.Category) async {
+        guard let library else { return }
+        _ = try? await library.setCategory(id: id, to: category)
+        await refresh()
+    }
+
+    /// Bulk category assignment over a selection (UX addendum §22.4) — one
+    /// atomic index rewrite per entry, all local, then a single refresh.
+    func setCategory(ids: [String], _ category: FreakCore.Category) async {
+        guard let library else { return }
+        for id in ids {
+            _ = try? await library.setCategory(id: id, to: category)
+        }
+        await refresh()
+    }
+
+    func toggleFavorite(id: String) async {
+        guard let library, let existing = entry(id: id) else { return }
+        _ = try? await library.setFavorite(id: id, to: !existing.favorite)
+        await refresh()
+    }
+
+    func setFavorite(id: String, _ favorite: Bool) async {
+        guard let library else { return }
+        _ = try? await library.setFavorite(id: id, to: favorite)
+        await refresh()
+    }
+
+    // ------------------------------------------------------ collection bytes
+
+    /// Resolve a collection's slot occupant to real bytes (data-model spec
+    /// §4.4) — the standard resolver Apply pre-loads its changed slots from.
+    func presetForRef(_ ref: PresetRef) async throws -> Preset {
+        guard let library else {
+            throw FreakError.libraryNotFound(path: root.path)
+        }
+        return try await library.presetForRef(ref)
     }
 
     /// Bulk import off a backup-built snapshot (UX §6 Import Device…).

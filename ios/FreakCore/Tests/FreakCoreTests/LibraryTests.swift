@@ -158,7 +158,9 @@ struct LibraryTests {
         #expect((index["schema"] as? NSNumber)?.intValue == 1)
         let d = (index["entries"] as! [[String: Any]])[0]
         #expect(Set(d.keys) == ["id", "name", "sha256", "meta_hex", "slot",
-                                "added_at", "tags"])
+                                "added_at", "tags", "category", "favorite"])
+        #expect(d["category"] as? String == "uncategorized")
+        #expect(d["favorite"] as? Bool == false)
         // pinned timestamp shape: "yyyy-MM-dd'T'HH:mm:ss"
         let addedAt = d["added_at"] as! String
         #expect(addedAt.count == 19 && addedAt[addedAt.index(addedAt.startIndex,
@@ -222,5 +224,79 @@ struct LibraryTests {
         #expect(withInits[0].name == "Init")
         // the second and third Init records share (sha, name): skipped
         #expect(await lib.entries().count == 3)
+    }
+
+    // ------------------------------------------------ preset attributes
+
+    @Test func attributesPersistAndEdit() async throws {
+        let (lib, root) = try freshLibrary("attrs")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let entry = try await lib.add(
+            try Preset(name: "Pad One", blob: blob7(1), meta: testMeta),
+            slot: 0, tags: ["ambient", "pad"], category: .pad, favorite: true)
+        #expect(entry.category == .pad && entry.favorite && entry.tags == ["ambient", "pad"])
+        // survives a reopen (additive fields round-trip)
+        let reopened = try Library.open(at: root)
+        let back = try await reopened.entry(id: entry.id)
+        #expect(back.category == .pad && back.favorite && back.tags == ["ambient", "pad"])
+        // editors rewrite the index atomically
+        _ = try await lib.setCategory(id: entry.id, to: .bass)
+        _ = try await lib.setFavorite(id: entry.id, to: false)
+        let edited = try await lib.setTags(id: entry.id, to: ["sub"])
+        #expect(edited.category == .bass && !edited.favorite && edited.tags == ["sub"])
+        let reopened2 = try Library.open(at: root)
+        let back2 = try await reopened2.entry(id: entry.id)
+        #expect(back2.category == .bass && !back2.favorite && back2.tags == ["sub"])
+    }
+
+    @Test func oldIndexLoadsWithDefaults() async throws {
+        let root = tempDir("attrs-oldindex")
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(
+            at: root.appendingPathComponent("blobs"), withIntermediateDirectories: true)
+        // an index predating category/favorite/tags
+        let legacy = """
+        {"schema": 1, "entries": [{"id": "old0", "name": "Legacy",
+          "sha256": "abc", "meta_hex": "\(testMeta.hexString)", "slot": 5,
+          "added_at": "2026-01-01T00:00:00"}]}
+        """
+        try AtomicFile.write(Data(legacy.utf8),
+                             to: root.appendingPathComponent("index.json"))
+        let lib = try Library.open(at: root)
+        let e = try await lib.entry(id: "old0")
+        #expect(e.category == .uncategorized && !e.favorite && e.tags == [])
+    }
+
+    @Test func importSnapshotAutoFillsCategoryFromDeviceByte() async throws {
+        let (lib, root) = try freshLibrary("attrs-import")
+        defer { try? FileManager.default.removeItem(at: root) }
+        // meta[7] = 0x03 -> keys; 0x01 -> bass; 0x7F (out of table) -> uncategorized
+        func metaWith(byte7: UInt8) -> Data {
+            var m = [UInt8](testMeta); m[7] = byte7; return Data(m)
+        }
+        let records = [
+            snapshotRecord(slot: 0, name: "Keys One", blob: blob7(1), meta: metaWith(byte7: 0x03)),
+            snapshotRecord(slot: 1, name: "Bass One", blob: blob7(2), meta: metaWith(byte7: 0x01)),
+            snapshotRecord(slot: 2, name: "Weird", blob: blob7(3), meta: metaWith(byte7: 0x7F)),
+        ]
+        let added = try await lib.importSnapshot(snapshot(records))
+        #expect(added.map(\.category) == [.keys, .bass, .uncategorized])
+        #expect(added.allSatisfy { !$0.favorite && $0.tags.isEmpty })
+    }
+
+    @Test func censusAndTagsHelpers() async throws {
+        let (lib, root) = try freshLibrary("attrs-census")
+        defer { try? FileManager.default.removeItem(at: root) }
+        _ = try await lib.add(try Preset(name: "P1", blob: blob7(1), meta: testMeta),
+                              tags: ["a", "b"], category: .pad)
+        _ = try await lib.add(try Preset(name: "P2", blob: blob7(2), meta: testMeta),
+                              tags: ["b", "c"], category: .pad)
+        _ = try await lib.add(try Preset(name: "P3", blob: blob7(3), meta: testMeta),
+                              category: .bass)
+        let entries = await lib.entries()
+        let census = Attributes.categoryCensus(entries)
+        #expect(census[.pad] == 2 && census[.bass] == 1 && census[.uncategorized] == 0)
+        #expect(census.count == Category.allCases.count, "every category key present")
+        #expect(Attributes.allTags(entries) == ["a", "b", "c"])
     }
 }

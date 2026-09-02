@@ -118,6 +118,318 @@ struct TagChip: View {
     }
 }
 
+// ============================================ category / favorite / tags
+//
+// `Category` is qualified `FreakCore.Category` everywhere in the app: the
+// Objective-C runtime (via Foundation) also declares a `Category` typedef,
+// so the bare name is ambiguous outside FreakCore itself.
+
+extension FreakCore.Category {
+    /// Chip / picker display order (UX addendum §21.2): the documented set,
+    /// with Uncategorized always last (the auto-fill fallback).
+    static var displayOrder: [FreakCore.Category] {
+        allCases.filter { $0 != .uncategorized } + [.uncategorized]
+    }
+}
+
+/// One category chip — `displayName · count`, selectable, never color-only
+/// (fill + `.isSelected` trait). A zero-count chip is dimmed + non-tappable
+/// (present, so the taxonomy reads consistently), never hidden (§22.1).
+struct CategoryChip: View {
+    let title: String
+    let count: Int
+    let selected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 5) {
+                Text(title).font(.subheadline)
+                Text("\(count)")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(selected ? .white.opacity(0.9) : .secondary)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(selected ? Color.accentColor
+                                 : Color.secondary.opacity(0.12),
+                        in: Capsule())
+            .foregroundStyle(selected ? .white : .primary)
+        }
+        .buttonStyle(.plain)
+        .disabled(count == 0 && !selected)
+        .opacity(count == 0 && !selected ? 0.4 : 1)
+        .accessibilityLabel("\(title), \(count) presets")
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+}
+
+/// The wrapping chip grid pinned above the library / favorites lists (§22.1).
+/// Reads and drives `LibraryModel.categoryFilter`; counts are faceted (§22.2).
+struct CategoryFilterBar: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        let counts = model.libraryModel.categoryCounts
+        let total = counts.values.reduce(0, +)
+        let selected = model.libraryModel.categoryFilter
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                CategoryChip(title: "All", count: total,
+                             selected: selected == nil) {
+                    model.libraryModel.categoryFilter = nil
+                }
+                ForEach(FreakCore.Category.displayOrder, id: \.self) { category in
+                    CategoryChip(title: category.displayName,
+                                 count: counts[category] ?? 0,
+                                 selected: selected == category) {
+                        model.libraryModel.categoryFilter =
+                            (selected == category) ? nil : category
+                    }
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+        }
+        .background(.thinMaterial)
+    }
+}
+
+/// A small category label chip on a library row (§22.3). Uncategorized is
+/// silent — no badge — so the row stays quiet until the user tags it.
+struct CategoryBadge: View {
+    let category: FreakCore.Category
+
+    var body: some View {
+        if category != .uncategorized {
+            Text(category.displayName)
+                .font(.caption2.weight(.medium))
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(Color.secondary.opacity(0.15), in: Capsule())
+                .foregroundStyle(.secondary)
+        }
+    }
+}
+
+/// The editable category row in a preset detail (§22.3) — a Menu over the
+/// taxonomy, committing instantly and locally. This is where a wrong device-
+/// byte auto-fill is corrected.
+struct CategoryPickerRow: View {
+    let category: FreakCore.Category
+    let onChange: (FreakCore.Category) -> Void
+
+    var body: some View {
+        LabeledContent("Category") {
+            Menu {
+                ForEach(FreakCore.Category.displayOrder, id: \.self) { option in
+                    Button {
+                        onChange(option)
+                    } label: {
+                        if option == category {
+                            Label(option.displayName, systemImage: "checkmark")
+                        } else {
+                            Text(option.displayName)
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: 4) {
+                    Text(category.displayName)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+}
+
+/// The one heart toggle used on rows and in detail (§24.1). 44 pt target;
+/// favorite state is a trait, never color-only. `disabledReason` (device
+/// rows without a hash) shows honestly and blocks the tap (§24.2).
+struct FavoriteToggle: View {
+    let isFavorite: Bool
+    var disabledReason: String? = nil
+    let toggle: () -> Void
+
+    var body: some View {
+        Button(action: toggle) {
+            Image(systemName: isFavorite ? "heart.fill" : "heart")
+                .foregroundStyle(isFavorite ? .pink : .secondary)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(disabledReason != nil)
+        .help(disabledReason ?? "")
+        .accessibilityLabel(isFavorite ? "favorite" : "not a favorite")
+        .accessibilityAddTraits(isFavorite ? .isSelected : [])
+        .accessibilityHint(disabledReason ?? "")
+    }
+}
+
+/// Add/remove tag editor (§23.1) — removable chips + a single-line add field
+/// committing on Return; trims, rejects empty, case-insensitive de-dupe
+/// (handled by the model). Replaces the base comma-string alert.
+struct TagEditor: View {
+    let tags: [String]
+    let add: (String) -> Void
+    let remove: (String) -> Void
+
+    @State private var draft = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if !tags.isEmpty {
+                WrapHStack(tags) { tag in
+                    HStack(spacing: 4) {
+                        Text(tag).font(.caption2)
+                        Button {
+                            remove(tag)
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.caption2)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("remove tag \(tag)")
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color.accentColor.opacity(0.12), in: Capsule())
+                }
+            }
+            HStack(spacing: 6) {
+                TextField("Add a tag", text: $draft)
+                    .textFieldStyle(.roundedBorder)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                    .onSubmit(commit)
+                Button("Add", action: commit)
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(draft.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+        }
+    }
+
+    private func commit() {
+        let trimmed = draft.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return }
+        add(trimmed)
+        draft = ""
+    }
+}
+
+/// A minimal wrapping HStack for tag chips (no third-party FlowLayout).
+struct WrapHStack<Item: Hashable, Content: View>: View {
+    let items: [Item]
+    let content: (Item) -> Content
+
+    init(_ items: [Item], @ViewBuilder content: @escaping (Item) -> Content) {
+        self.items = items
+        self.content = content
+    }
+
+    var body: some View {
+        FlowLayout(spacing: 6) {
+            ForEach(items, id: \.self) { content($0) }
+        }
+    }
+}
+
+/// A tiny flow layout (iOS 16+ Layout) so chips wrap instead of clipping.
+struct FlowLayout: Layout {
+    var spacing: CGFloat = 6
+
+    func sizeThatFits(proposal: ProposedViewSize,
+                      subviews: Subviews, cache: inout ()) -> CGSize {
+        let maxWidth = proposal.width ?? .infinity
+        var x: CGFloat = 0, y: CGFloat = 0, rowHeight: CGFloat = 0
+        for view in subviews {
+            let size = view.sizeThatFits(.unspecified)
+            if x + size.width > maxWidth, x > 0 {
+                x = 0; y += rowHeight + spacing; rowHeight = 0
+            }
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+        }
+        return CGSize(width: maxWidth == .infinity ? x : maxWidth,
+                      height: y + rowHeight)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize,
+                       subviews: Subviews, cache: inout ()) {
+        var x = bounds.minX, y = bounds.minY, rowHeight: CGFloat = 0
+        for view in subviews {
+            let size = view.sizeThatFits(.unspecified)
+            if x + size.width > bounds.maxX, x > bounds.minX {
+                x = bounds.minX; y += rowHeight + spacing; rowHeight = 0
+            }
+            view.place(at: CGPoint(x: x, y: y), proposal: .unspecified)
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+        }
+    }
+}
+
+// ==================================================== collections vocabulary
+
+/// One-line provenance for a collection (UX addendum §26.1).
+struct ProvenanceLabel: View {
+    let provenance: Provenance
+
+    var body: some View {
+        Text(text)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+    }
+
+    private var text: String {
+        switch provenance.kind {
+        case .importedBank:
+            return "from bank \"\(provenance.source)\""
+        case .deviceSnapshot:
+            let who = provenance.source.hasPrefix("practice")
+                ? "a practice device" : "this MicroFreak"
+            return "from \(who)"
+        case .manual:
+            return "assembled by hand"
+        }
+    }
+}
+
+/// A collection list row (UX addendum §26.1): name · provenance · count, with
+/// a Practice chip when the provenance identity is practice.
+struct CollectionRowView: View {
+    let collection: PresetCollection
+
+    var body: some View {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(collection.name).font(.body)
+                HStack(spacing: 6) {
+                    ProvenanceLabel(provenance: collection.provenance)
+                    Text("· \(collection.slots.count) presets")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Spacer()
+            if collection.provenance.kind == .deviceSnapshot,
+               collection.provenance.source.hasPrefix("practice") {
+                Text("Practice")
+                    .font(.caption2.weight(.semibold))
+                    .padding(.horizontal, 6).padding(.vertical, 2)
+                    .background(Color.purple.opacity(0.15), in: Capsule())
+                    .foregroundStyle(.purple)
+            }
+        }
+        .frame(minHeight: 52)
+        .contentShape(Rectangle())
+    }
+}
+
 /// The monospaced 3-digit slot number column (fixed width, UX §19).
 struct SlotNumberLabel: View {
     let slot: SlotID

@@ -1,0 +1,381 @@
+{
+  "description": "PresetCollection JSON round-trip (one case per provenance.kind; slots keyed by decimal-string slot, refs are {sha256,name,meta_hex}) and the pure plan_apply decision table. Actions: WRITE='write' (content OR name differs), SKIP_UNCHANGED='skip' (sha AND name equal), CLEAR='clear' (unlisted slot overwritten with clear_with). estimated_seconds == round((write+clear) * seconds_per_write, 1). shas are real sha256 hex of seeded blobs but only string equality matters, following the sync_diff convention. Regenerate: python3 tools/gen_vectors.py (from the repo root).",
+  "cases": [
+    {
+      "name": "roundtrip_device_snapshot",
+      "collection": {
+        "schema": 1,
+        "id": "ef008c1c594829cc943501097955347e",
+        "name": "Set device_snapshot",
+        "created_at": "2026-09-01T14:32:00",
+        "provenance": {
+          "kind": "device_snapshot",
+          "source": "Ambient Peaks.mfprojz"
+        },
+        "slots": {
+          "0": {
+            "sha256": "0984b6985535593ec0d8647dc7613ef433834e778e659074ddd39dddd0d73f19",
+            "name": "Voltage Forms",
+            "meta_hex": "080000000000000033"
+          },
+          "128": {
+            "sha256": "6b339c3d7965d535c4a934661bf906a2a2f1643fc05f69bf696c35c223a52ff2",
+            "name": "Tokyo88 V3",
+            "meta_hex": "080000000000000033"
+          },
+          "384": {
+            "sha256": "74022bfcd04b6f9366ccf91cf0785fd8a0629262bfb3abedb130e128ff3b5ba2",
+            "name": "High Bank",
+            "meta_hex": "080000000000000033"
+          }
+        }
+      },
+      "expected_slots": [
+        {
+          "slot": 0,
+          "sha256": "0984b6985535593ec0d8647dc7613ef433834e778e659074ddd39dddd0d73f19",
+          "name": "Voltage Forms",
+          "meta_hex": "080000000000000033"
+        },
+        {
+          "slot": 128,
+          "sha256": "6b339c3d7965d535c4a934661bf906a2a2f1643fc05f69bf696c35c223a52ff2",
+          "name": "Tokyo88 V3",
+          "meta_hex": "080000000000000033"
+        },
+        {
+          "slot": 384,
+          "sha256": "74022bfcd04b6f9366ccf91cf0785fd8a0629262bfb3abedb130e128ff3b5ba2",
+          "name": "High Bank",
+          "meta_hex": "080000000000000033"
+        }
+      ],
+      "expected_provenance": {
+        "kind": "device_snapshot",
+        "source": "Ambient Peaks.mfprojz"
+      }
+    },
+    {
+      "name": "roundtrip_imported_bank",
+      "collection": {
+        "schema": 1,
+        "id": "ce0777c4647e70b29d7c536a4920d62a",
+        "name": "Set imported_bank",
+        "created_at": "2026-09-01T14:32:00",
+        "provenance": {
+          "kind": "imported_bank",
+          "source": "Ambient Peaks.mfprojz"
+        },
+        "slots": {
+          "0": {
+            "sha256": "0984b6985535593ec0d8647dc7613ef433834e778e659074ddd39dddd0d73f19",
+            "name": "Voltage Forms",
+            "meta_hex": "080000000000000033"
+          },
+          "128": {
+            "sha256": "6b339c3d7965d535c4a934661bf906a2a2f1643fc05f69bf696c35c223a52ff2",
+            "name": "Tokyo88 V3",
+            "meta_hex": "080000000000000033"
+          },
+          "384": {
+            "sha256": "74022bfcd04b6f9366ccf91cf0785fd8a0629262bfb3abedb130e128ff3b5ba2",
+            "name": "High Bank",
+            "meta_hex": "080000000000000033"
+          }
+        }
+      },
+      "expected_slots": [
+        {
+          "slot": 0,
+          "sha256": "0984b6985535593ec0d8647dc7613ef433834e778e659074ddd39dddd0d73f19",
+          "name": "Voltage Forms",
+          "meta_hex": "080000000000000033"
+        },
+        {
+          "slot": 128,
+          "sha256": "6b339c3d7965d535c4a934661bf906a2a2f1643fc05f69bf696c35c223a52ff2",
+          "name": "Tokyo88 V3",
+          "meta_hex": "080000000000000033"
+        },
+        {
+          "slot": 384,
+          "sha256": "74022bfcd04b6f9366ccf91cf0785fd8a0629262bfb3abedb130e128ff3b5ba2",
+          "name": "High Bank",
+          "meta_hex": "080000000000000033"
+        }
+      ],
+      "expected_provenance": {
+        "kind": "imported_bank",
+        "source": "Ambient Peaks.mfprojz"
+      }
+    },
+    {
+      "name": "roundtrip_manual",
+      "collection": {
+        "schema": 1,
+        "id": "36bde66f289a35683683b041c6d8f418",
+        "name": "Set manual",
+        "created_at": "2026-09-01T14:32:00",
+        "provenance": {
+          "kind": "manual",
+          "source": "Ambient Peaks.mfprojz"
+        },
+        "slots": {
+          "0": {
+            "sha256": "0984b6985535593ec0d8647dc7613ef433834e778e659074ddd39dddd0d73f19",
+            "name": "Voltage Forms",
+            "meta_hex": "080000000000000033"
+          },
+          "128": {
+            "sha256": "6b339c3d7965d535c4a934661bf906a2a2f1643fc05f69bf696c35c223a52ff2",
+            "name": "Tokyo88 V3",
+            "meta_hex": "080000000000000033"
+          },
+          "384": {
+            "sha256": "74022bfcd04b6f9366ccf91cf0785fd8a0629262bfb3abedb130e128ff3b5ba2",
+            "name": "High Bank",
+            "meta_hex": "080000000000000033"
+          }
+        }
+      },
+      "expected_slots": [
+        {
+          "slot": 0,
+          "sha256": "0984b6985535593ec0d8647dc7613ef433834e778e659074ddd39dddd0d73f19",
+          "name": "Voltage Forms",
+          "meta_hex": "080000000000000033"
+        },
+        {
+          "slot": 128,
+          "sha256": "6b339c3d7965d535c4a934661bf906a2a2f1643fc05f69bf696c35c223a52ff2",
+          "name": "Tokyo88 V3",
+          "meta_hex": "080000000000000033"
+        },
+        {
+          "slot": 384,
+          "sha256": "74022bfcd04b6f9366ccf91cf0785fd8a0629262bfb3abedb130e128ff3b5ba2",
+          "name": "High Bank",
+          "meta_hex": "080000000000000033"
+        }
+      ],
+      "expected_provenance": {
+        "kind": "manual",
+        "source": "Ambient Peaks.mfprojz"
+      }
+    },
+    {
+      "name": "clear_policy",
+      "snapshot": [
+        {
+          "slot": 0,
+          "name": "Keep",
+          "sha256": "768add9525c00dabfeb15c220b0d01dbd9fc0cbe1a972baba844729c69c8b50d"
+        },
+        {
+          "slot": 1,
+          "name": "Old",
+          "sha256": "07d26159029bb3593f7ba83d1fa52578ddfd2ea50f4ffe652cd7b9bc8c46550e"
+        },
+        {
+          "slot": 2,
+          "name": "Alpha",
+          "sha256": "e378b0e665666b1f5003acd917c30fc0e4171af199c806810d7335366299d64f"
+        },
+        {
+          "slot": 3,
+          "name": "Gone",
+          "sha256": "995a92301e09561e0e929b2fc74617ade6a3378ac89c233281c452f0ace632ae"
+        },
+        {
+          "slot": 4,
+          "name": "Init",
+          "sha256": "cfc13cc1e949cffe8557063bd103ae1a210ca4b2343905b19d8d310bb1896cba"
+        },
+        {
+          "slot": 5,
+          "name": "Untouched",
+          "sha256": "0f893aa9125d5f22e87896be89668f6c880bb5807468e7b20728d5b0a9ff2a3b"
+        }
+      ],
+      "collection_slots": {
+        "0": {
+          "sha256": "768add9525c00dabfeb15c220b0d01dbd9fc0cbe1a972baba844729c69c8b50d",
+          "name": "Keep",
+          "meta_hex": "080000000000000033"
+        },
+        "1": {
+          "sha256": "23ca74d24a6a8578bdb957b8c9a525a08375ac713156c2779a5642b68d846a33",
+          "name": "New",
+          "meta_hex": "080000000000000033"
+        },
+        "2": {
+          "sha256": "e378b0e665666b1f5003acd917c30fc0e4171af199c806810d7335366299d64f",
+          "name": "Beta",
+          "meta_hex": "080000000000000033"
+        }
+      },
+      "options": {
+        "unlisted": "clear",
+        "clear_with": {
+          "sha256": "cfc13cc1e949cffe8557063bd103ae1a210ca4b2343905b19d8d310bb1896cba",
+          "name": "Init",
+          "meta_hex": "080000000000000033"
+        },
+        "seconds_per_write": 1.0
+      },
+      "expected": [
+        {
+          "slot": 0,
+          "action": "skip"
+        },
+        {
+          "slot": 1,
+          "action": "write"
+        },
+        {
+          "slot": 2,
+          "action": "write"
+        },
+        {
+          "slot": 3,
+          "action": "clear"
+        },
+        {
+          "slot": 4,
+          "action": "skip"
+        },
+        {
+          "slot": 5,
+          "action": "clear"
+        }
+      ],
+      "write_count": 2,
+      "clear_count": 2,
+      "skip_count": 2,
+      "total_slots": 6,
+      "estimated_seconds": 4.0
+    },
+    {
+      "name": "leave_policy",
+      "snapshot": [
+        {
+          "slot": 0,
+          "name": "Keep",
+          "sha256": "768add9525c00dabfeb15c220b0d01dbd9fc0cbe1a972baba844729c69c8b50d"
+        },
+        {
+          "slot": 1,
+          "name": "Old",
+          "sha256": "07d26159029bb3593f7ba83d1fa52578ddfd2ea50f4ffe652cd7b9bc8c46550e"
+        },
+        {
+          "slot": 2,
+          "name": "Alpha",
+          "sha256": "e378b0e665666b1f5003acd917c30fc0e4171af199c806810d7335366299d64f"
+        },
+        {
+          "slot": 3,
+          "name": "Gone",
+          "sha256": "995a92301e09561e0e929b2fc74617ade6a3378ac89c233281c452f0ace632ae"
+        },
+        {
+          "slot": 4,
+          "name": "Init",
+          "sha256": "cfc13cc1e949cffe8557063bd103ae1a210ca4b2343905b19d8d310bb1896cba"
+        },
+        {
+          "slot": 5,
+          "name": "Untouched",
+          "sha256": "0f893aa9125d5f22e87896be89668f6c880bb5807468e7b20728d5b0a9ff2a3b"
+        }
+      ],
+      "collection_slots": {
+        "0": {
+          "sha256": "768add9525c00dabfeb15c220b0d01dbd9fc0cbe1a972baba844729c69c8b50d",
+          "name": "Keep",
+          "meta_hex": "080000000000000033"
+        },
+        "1": {
+          "sha256": "23ca74d24a6a8578bdb957b8c9a525a08375ac713156c2779a5642b68d846a33",
+          "name": "New",
+          "meta_hex": "080000000000000033"
+        },
+        "2": {
+          "sha256": "e378b0e665666b1f5003acd917c30fc0e4171af199c806810d7335366299d64f",
+          "name": "Beta",
+          "meta_hex": "080000000000000033"
+        }
+      },
+      "options": {
+        "unlisted": "leave",
+        "clear_with": null,
+        "seconds_per_write": 1.0
+      },
+      "expected": [
+        {
+          "slot": 0,
+          "action": "skip"
+        },
+        {
+          "slot": 1,
+          "action": "write"
+        },
+        {
+          "slot": 2,
+          "action": "write"
+        },
+        {
+          "slot": 3,
+          "action": "skip"
+        },
+        {
+          "slot": 4,
+          "action": "skip"
+        },
+        {
+          "slot": 5,
+          "action": "skip"
+        }
+      ],
+      "write_count": 2,
+      "clear_count": 0,
+      "skip_count": 4,
+      "total_slots": 6,
+      "estimated_seconds": 2.0
+    },
+    {
+      "name": "refuses_partial_snapshot",
+      "snapshot": [
+        {
+          "slot": 0,
+          "name": "Keep",
+          "sha256": "768add9525c00dabfeb15c220b0d01dbd9fc0cbe1a972baba844729c69c8b50d"
+        },
+        {
+          "slot": 1,
+          "name": "Old",
+          "sha256": null
+        }
+      ],
+      "collection_slots": {
+        "0": {
+          "sha256": "768add9525c00dabfeb15c220b0d01dbd9fc0cbe1a972baba844729c69c8b50d",
+          "name": "Keep",
+          "meta_hex": "080000000000000033"
+        },
+        "1": {
+          "sha256": "23ca74d24a6a8578bdb957b8c9a525a08375ac713156c2779a5642b68d846a33",
+          "name": "New",
+          "meta_hex": "080000000000000033"
+        },
+        "2": {
+          "sha256": "e378b0e665666b1f5003acd917c30fc0e4171af199c806810d7335366299d64f",
+          "name": "Beta",
+          "meta_hex": "080000000000000033"
+        }
+      },
+      "expect_error": "ValueError",
+      "note": "plan_apply requires a FULL hashed snapshot (every slot 0..N-1 present, has_hashes) \u2014 refusing beats guessing"
+    }
+  ]
+}

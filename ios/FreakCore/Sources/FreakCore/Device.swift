@@ -41,6 +41,12 @@ public protocol FreakDeviceProtocol: Sendable {
     func restore(from source: BackupSet, slots: [Int]?, verify: Bool,
                  progress: ProgressReporter?) async throws -> [WriteReport]
 
+    // collections: apply/switch (writes only plan.changes())
+    func applyCollection(plan: ApplyPlan,
+                         resolve: @Sendable (PresetRef) async throws -> Preset,
+                         verify: Bool,
+                         progress: ProgressReporter?) async throws -> [WriteReport]
+
     func close() async
 }
 
@@ -68,6 +74,14 @@ public extension FreakDeviceProtocol {
 
     func restore(from source: BackupSet) async throws -> [WriteReport] {
         try await restore(from: source, slots: nil, verify: true, progress: nil)
+    }
+
+    /// verify defaults to true, matching write / restore.
+    func applyCollection(plan: ApplyPlan,
+                         resolve: @Sendable (PresetRef) async throws -> Preset,
+                         progress: ProgressReporter?) async throws -> [WriteReport] {
+        try await applyCollection(plan: plan, resolve: resolve, verify: true,
+                                  progress: progress)
     }
 }
 
@@ -328,6 +342,53 @@ public final class MicroFreakDevice: FreakDeviceProtocol, Sendable {
                 let med = durations.sorted()[durations.count / 2]
                 progress.report(ProgressEvent(
                     done: done + 1, total: total, slot: slot, name: rep.name,
+                    elapsedSeconds: elapsed,
+                    etaSeconds: med * Double(total - done - 1)))
+            }
+        }
+        return reports
+    }
+
+    // ---------------------------------------------------------- collections
+
+    /// Apply/switch a Collection: write ONLY plan.changes() (WRITE + CLEAR),
+    /// ascending — SKIP_UNCHANGED slots are never written, so switching is
+    /// fast. Per changed slot: poll Task.isCancelled ->
+    /// .operationCancelled(done:total:); preset = resolve(incoming);
+    /// write(slot:, preset:, verify:). Stops at the first thrown error; any
+    /// FreakError (cancellation included) is rethrown as
+    /// .applyFailed(underlying:, completed:). Progress total = number of
+    /// changed slots (the pre-flight "N of 512" comes from the ApplyPlan
+    /// counts, not this progress total).
+    public func applyCollection(plan: ApplyPlan,
+                                resolve: @Sendable (PresetRef) async throws -> Preset,
+                                verify: Bool,
+                                progress: ProgressReporter?) async throws -> [WriteReport] {
+        defer { progress?.finish() }
+        let changes = plan.changes()
+        let total = changes.count
+        var reports: [WriteReport] = []
+        var durations: [Double] = []
+        let tStart = clock.now
+        for (done, sp) in changes.enumerated() {
+            let rep: WriteReport
+            do {
+                if Task.isCancelled {
+                    throw FreakError.operationCancelled(done: done, total: total)
+                }
+                let preset = try await resolve(sp.incoming!)
+                let t0 = clock.now
+                rep = try await write(slot: sp.slot, preset: preset, verify: verify)
+                durations.append(clock.now - t0)
+            } catch let e as FreakError {
+                throw FreakError.applyFailed(underlying: e, completed: reports)
+            }
+            reports.append(rep)
+            if let progress {
+                let elapsed = clock.now - tStart
+                let med = durations.sorted()[durations.count / 2]
+                progress.report(ProgressEvent(
+                    done: done + 1, total: total, slot: sp.slot, name: rep.name,
                     elapsedSeconds: elapsed,
                     etaSeconds: med * Double(total - done - 1)))
             }

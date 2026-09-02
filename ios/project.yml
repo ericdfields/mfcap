@@ -34,6 +34,13 @@ targets:
       - path: App/Sources
         excludes:
           - Info.plist
+      # Bundled starter library + collections (App/Resources/SeedBanks) as a
+      # folder reference, so it copies into the app bundle preserving its
+      # index.json / blobs/ / collections/ shape for first-run seeding
+      # (SeedInstaller). Read-only resource; never a compiled source.
+      - path: App/Resources/SeedBanks
+        type: folder
+        buildPhase: resources
     dependencies:
       - package: FreakCore
     settings:

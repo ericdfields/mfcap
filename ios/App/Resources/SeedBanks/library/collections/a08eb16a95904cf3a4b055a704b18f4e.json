@@ -1,0 +1,172 @@
+{
+  "schema": 1,
+  "id": "a08eb16a95904cf3a4b055a704b18f4e",
+  "name": "Conforce Signature",
+  "created_at": "2026-09-01T22:40:54",
+  "provenance": {
+    "kind": "imported_bank",
+    "source": "Conforce Signature"
+  },
+  "slots": {
+    "0": {
+      "sha256": "374075c5e2747a6d5e3ae342f86603dcec26d2eef8ab79ae0896359b6720ade0",
+      "name": "Engine Switch",
+      "meta_hex": "000000000000000000"
+    },
+    "1": {
+      "sha256": "597864392096f46ed3654cc88cd5447f835d1e774f15e85d63b6d6e4f9f04ba8",
+      "name": "Augment",
+      "meta_hex": "000000000000000000"
+    },
+    "2": {
+      "sha256": "a5eed91e3f19b0ece707c4f1cd2f25e5d84e1e4da66fb5d5a11494a358fa5af8",
+      "name": "Virtual Analog",
+      "meta_hex": "000000000000000000"
+    },
+    "3": {
+      "sha256": "48b802f20597b893ded0daf1ab7114af27c8ae469376648dc36fff18837c005d",
+      "name": "I Saw You",
+      "meta_hex": "000000000000000000"
+    },
+    "4": {
+      "sha256": "1dda30f2e51f9a8ad82beb7081bfef05dbf66d20ef98e510a600d1fe0f75eb16",
+      "name": "Radio Switch",
+      "meta_hex": "000000000000000000"
+    },
+    "5": {
+      "sha256": "50894aa55fd6e7d52fd8d4427532aa4e2f90014a6d5301cdbdadf26de1437dcc",
+      "name": "Helium",
+      "meta_hex": "000000000000000000"
+    },
+    "6": {
+      "sha256": "73a0498ee18d12d48349602341542928b98ff0d7351e7006376956108339cca9",
+      "name": "Come To Force",
+      "meta_hex": "000000000000000000"
+    },
+    "7": {
+      "sha256": "4cbe27dddf1efa581b58f1b2c84ee723a4c3f7d78a17e0d3c85b8ac33b78cbad",
+      "name": "This is weird",
+      "meta_hex": "000000000000000000"
+    },
+    "8": {
+      "sha256": "5a5072abe7385538d3cc86e80d79dae7256519f46321b4998e19d5d93252456e",
+      "name": "Randoarp",
+      "meta_hex": "000000000000000000"
+    },
+    "9": {
+      "sha256": "afaee5ccb4fb51410b5716e949a7776cfab06ab517f7d10de2a29381dbd6b445",
+      "name": "Stepped",
+      "meta_hex": "000000000000000000"
+    },
+    "10": {
+      "sha256": "bf29d9b97ef65d9ceca8217394050401fd3dd14345c51a49d7e4a952b7e14bc7",
+      "name": "Hollow Space",
+      "meta_hex": "000000000000000000"
+    },
+    "11": {
+      "sha256": "fde15235f90c59cfecf4d6081a97f9587bee035edefdfe9540ec87122581179d",
+      "name": "Etherdrag",
+      "meta_hex": "000000000000000000"
+    },
+    "99": {
+      "sha256": "2a797d7fd45e26b556722e542cdf34ca9e6acdf07fbe8890d47003b5f3c62c20",
+      "name": "Eurocrack",
+      "meta_hex": "000000000000000000"
+    },
+    "100": {
+      "sha256": "256c2dd7cf234e5aadf2b1186368e5a8c9b9ea18b75e353bb70795ab7ffa9103",
+      "name": "Daze",
+      "meta_hex": "000000000000000000"
+    },
+    "101": {
+      "sha256": "89f71d2a08b0018b64e7edb65d5f82cf75eb2c93e3f7185e0edba664b29eb8d0",
+      "name": "Unison Force",
+      "meta_hex": "000000000000000000"
+    },
+    "102": {
+      "sha256": "d9f2705d4245686bca968e5eda467ac0e267cdd71ae71eb86c4917c2500ac7c2",
+      "name": "Autic",
+      "meta_hex": "000000000000000000"
+    },
+    "103": {
+      "sha256": "6b9117aef3e508f72ac174e23d3e969c2dcd8ac785619fc6a094fc956ede6c78",
+      "name": "Fermium",
+      "meta_hex": "000000000000000000"
+    },
+    "104": {
+      "sha256": "ebabfacf1346b390e06c0b6c24500e44ef1513d93622dfa8078efa78c66c688d",
+      "name": "Glider",
+      "meta_hex": "000000000000000000"
+    },
+    "105": {
+      "sha256": "d35d23b43f256694955286d43beb282d0b1f71353f36d4b4cd31d0df2ef8f088",
+      "name": "Transmitter",
+      "meta_hex": "000000000000000000"
+    },
+    "106": {
+      "sha256": "b4ccff212f039ad37954fd489e04d638bb84c9d6a25aaa64de4fd4cd69fad725",
+      "name": "Static Volt",
+      "meta_hex": "000000000000000000"
+    },
+    "107": {
+      "sha256": "3c574362a01e91bf808009b89d2899d705e984f74c3f5ebccb79754c1f3ed020",
+      "name": "Electro Bass",
+      "meta_hex": "000000000000000000"
+    },
+    "108": {
+      "sha256": "e6e1d9aeeb0000c30fa97ecf8de38c677272d9c80e78d7f7989ffcb043c088b9",
+      "name": "Presentism",
+      "meta_hex": "000000000000000000"
+    },
+    "109": {
+      "sha256": "63eb6d07679333ef3d22906c50dab524deb24e8e89a9f3b361b907c1e731b245",
+      "name": "Lonely Run",
+      "meta_hex": "000000000000000000"
+    },
+    "110": {
+      "sha256": "70188fa628b9f0108e21df0458985f0dca7b8afca9a71ab9eedb510af61c50a5",
+      "name": "Twoism",
+      "meta_hex": "000000000000000000"
+    },
+    "111": {
+      "sha256": "a64134437efee83bd77f55c78f3b8c5d8013117968250b1d0fdb98525bd5d88a",
+      "name": "Dreamcoat",
+      "meta_hex": "000000000000000000"
+    },
+    "112": {
+      "sha256": "220180841ec9ee5ad12d0e42bca8ced6d82504e643bf8f334eb5502c98e77668",
+      "name": "Homestay",
+      "meta_hex": "000000000000000000"
+    },
+    "113": {
+      "sha256": "21a4cbec58d3732dbb4a20294a92573e6b5642581cddbc5a890888d7fb8e335d",
+      "name": "Noisetrap",
+      "meta_hex": "000000000000000000"
+    },
+    "114": {
+      "sha256": "a62ade54fe76f7a9409b514199fccd3e9b50328420133ca2948e2210ca8b31a4",
+      "name": "Oneum",
+      "meta_hex": "000000000000000000"
+    },
+    "115": {
+      "sha256": "2b6eaf6b92a9a3a46a912b5b2ceae2df773cf40bccab53724fb48a0a82c0b865",
+      "name": "Dark Drone",
+      "meta_hex": "000000000000000000"
+    },
+    "116": {
+      "sha256": "b57ba2c3ef2dd2e85288d18f2d2093a63306e72e109005eec8d893c06db6845d",
+      "name": "Wallydorf",
+      "meta_hex": "000000000000000000"
+    },
+    "117": {
+      "sha256": "0f55b6c4225c3f2ce4c27ef74bf70e43bbd070bf21808b4c4be942985e5aa31b",
+      "name": "Slow Evolution",
+      "meta_hex": "000000000000000000"
+    },
+    "118": {
+      "sha256": "b57427e2789cabb816137f98377fc5dfa6d9ee8c639e16b4dcf2026787d7eef0",
+      "name": "Alpha Cygni",
+      "meta_hex": "000000000000000000"
+    }
+  }
+}

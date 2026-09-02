@@ -1,0 +1,172 @@
+{
+  "schema": 1,
+  "id": "31e1b84911244602adc49f4765b80e61",
+  "name": "Blush Response Signature 2",
+  "created_at": "2026-09-01T22:40:54",
+  "provenance": {
+    "kind": "imported_bank",
+    "source": "Blush Response Signature 2"
+  },
+  "slots": {
+    "0": {
+      "sha256": "04ff4173a747a70071afe880c14947d6cdd270e79e88a2f69854de26baf6b8a1",
+      "name": "Tek Saw",
+      "meta_hex": "000000000000000000"
+    },
+    "1": {
+      "sha256": "9d9ddb824a12719ebd9a68e894262f606f0bea2b395c08bcd657fceaa334bad1",
+      "name": "AI Pad",
+      "meta_hex": "000000000000000000"
+    },
+    "2": {
+      "sha256": "272e176c39920963fe45dff16c4308c8fa203b6cbc8663125e5d95b3cf4790f0",
+      "name": "Tin Drone",
+      "meta_hex": "000000000000000000"
+    },
+    "3": {
+      "sha256": "c15362fbb4c289ea973f15db080c4cf9a0f66334a609603a9482d73f91505abf",
+      "name": "NuEBM",
+      "meta_hex": "000100010000000000"
+    },
+    "4": {
+      "sha256": "859a9ed735fb5e2011387da52b772787454648a240e3635c50258645ffb3510b",
+      "name": "Synchro",
+      "meta_hex": "000001100000010010"
+    },
+    "5": {
+      "sha256": "7626e9dcfe6d2ae6078a5d03b1eca4c4d97ab18edfc2671f368b1189ebfc512e",
+      "name": "Stretcher",
+      "meta_hex": "000000000000000000"
+    },
+    "6": {
+      "sha256": "7c875aa5f466081bbe5b0415efadcc9d8a764a3dbe78393e032df28bdee8e89b",
+      "name": "Dead NES",
+      "meta_hex": "000000000000000000"
+    },
+    "7": {
+      "sha256": "b80473d0ee8297768e85dccc5ec38f0afa18ecf5658eb20837126834574eb808",
+      "name": "Metal Face",
+      "meta_hex": "000000100000010010"
+    },
+    "8": {
+      "sha256": "3353dacdab78ec60ef0cb61df15cb45cc24d82f1597d564512a609e1ea8e90e2",
+      "name": "Hold Me",
+      "meta_hex": "000000000000000000"
+    },
+    "9": {
+      "sha256": "e817305519572f3414775f1e9c73e7c75bb61ca17505d304d792f92eb4bc9876",
+      "name": "A7BA",
+      "meta_hex": "000000001000110001"
+    },
+    "10": {
+      "sha256": "16db9f920b64f3815b9e2e1d7445093f1fff448981be47ecdf5c20ffdfc0af18",
+      "name": "CZ Rezzer",
+      "meta_hex": "000000000000000000"
+    },
+    "11": {
+      "sha256": "24fba7952264e045083c1e624bbd7b0565834580b0560e11fc364758d10d4d47",
+      "name": "AEternal",
+      "meta_hex": "000000000000000000"
+    },
+    "99": {
+      "sha256": "88d2f30c8f89c21ca4aa726da5ef5ed1229e2052d5d0c059f57d66eef071f537",
+      "name": "Peng",
+      "meta_hex": "000000000000000000"
+    },
+    "100": {
+      "sha256": "ee93e3e18c0282af9805ec6297d35b21a3b8ec1797f66567dcd9a923d52d6afe",
+      "name": "Heart Sync",
+      "meta_hex": "000000000000000000"
+    },
+    "101": {
+      "sha256": "58f83903fcf240a66f4c753bbc3666d86590bee8240d113f9cb0000493045ef5",
+      "name": "Invert",
+      "meta_hex": "000000000000000000"
+    },
+    "102": {
+      "sha256": "4801a9149f3586c920acca6ac539e2f637ec189909b8d0cdacfbb15671b2d20d",
+      "name": "Dubber",
+      "meta_hex": "000000001000101001"
+    },
+    "103": {
+      "sha256": "b1ed713bbf6e2787b40103e97c0443e7fcdfa807506bdb3f88f5afa922e25844",
+      "name": "Wave Bass",
+      "meta_hex": "000000000000000000"
+    },
+    "104": {
+      "sha256": "13ad373d2cbb92b4ebe74c50fdb2d54616f95e4dfd9ee3406f2e18006c8015d6",
+      "name": "Milled",
+      "meta_hex": "000000000000000000"
+    },
+    "105": {
+      "sha256": "4412550b3a6cca3921429429a595fe3037fb6fdfe8ad79adf3ac31cdb24719a5",
+      "name": "Aggro 242",
+      "meta_hex": "000001100000010010"
+    },
+    "106": {
+      "sha256": "412b8213312ed769f0a743c3a2fc2c77dfc431d8837537ee7f0abc34736740d3",
+      "name": "Repetae",
+      "meta_hex": "000000000000000000"
+    },
+    "107": {
+      "sha256": "9445f5e1d6f0b9d2a4478823d29e31529ed5c10f8f4e000efbb472f9784776b1",
+      "name": "Dirt Pianist",
+      "meta_hex": "000000000000000000"
+    },
+    "108": {
+      "sha256": "821389649835b292c1a48f56d6c888210f6a4d2c1e0feef9c113eace8d79a676",
+      "name": "Timestretch",
+      "meta_hex": "000000000000000000"
+    },
+    "109": {
+      "sha256": "803bcf762590f373f7361b2b2ad950c32668e885a10260fed63c6d4855fa784b",
+      "name": "Dialup",
+      "meta_hex": "000001010000100010"
+    },
+    "110": {
+      "sha256": "d1675f7466b4d806932e7c42676c2fd72f85f7443de7c796a8dd7a5d58df27e4",
+      "name": "Mindfield",
+      "meta_hex": "000001000000101010"
+    },
+    "111": {
+      "sha256": "5102596a34126a0263c935a4142f23b9a9c5e8c7086a51a0b98579f5366fed74",
+      "name": "Altibbz",
+      "meta_hex": "000000000100110000"
+    },
+    "112": {
+      "sha256": "3992fb646c1051dcbafee4c4b15d41931398a5c4363c133bded814394291ea71",
+      "name": "Downshift",
+      "meta_hex": "000000000000000000"
+    },
+    "113": {
+      "sha256": "a308e4281d48ea59934ed10b31dc6bb8b60be2313ae6dd494544a605b8d59cdf",
+      "name": "Drippy",
+      "meta_hex": "000000100000101000"
+    },
+    "114": {
+      "sha256": "194c94e0dde664846c55fc8b9b672dae2889bc7fff87d3acda0ce05fb7bc04ce",
+      "name": "Fail State",
+      "meta_hex": "000000000000000000"
+    },
+    "115": {
+      "sha256": "f70b56cab771061920986e8e7ca9a42260bc2fb9a072206ce7acba08de894312",
+      "name": "Beyond Broken",
+      "meta_hex": "000000100000101010"
+    },
+    "116": {
+      "sha256": "94232d806ff3f9b2cc97edea53c510cd097c35c3cf50111b3dbc26ff1a016636",
+      "name": "Tape Decay",
+      "meta_hex": "000000000000000000"
+    },
+    "117": {
+      "sha256": "f00f0926e1ed34616094d2d6fffdea724bbdcd09c354026b7ea9d71fbe0a82c2",
+      "name": "Blush Mod",
+      "meta_hex": "000000000011000000"
+    },
+    "118": {
+      "sha256": "afb955fd7e61c5e255fb3f42afb95e0d24b53844c69312303ee22f0b49773fa1",
+      "name": "Autopad",
+      "meta_hex": "000000000000000000"
+    }
+  }
+}

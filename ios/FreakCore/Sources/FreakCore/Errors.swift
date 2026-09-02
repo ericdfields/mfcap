@@ -78,6 +78,7 @@ public enum FreakError: Error, Equatable, Sendable {
     // -- stored data
     case integrity(path: String, detail: String)
     case entryNotFound(entryID: String)
+    case collectionNotFound(id: String)             // Library subtree (.library group)
     case libraryCorrupt(path: String, detail: String)
     case libraryExists(path: String)                // Python: FileExistsError from Library.create
     case libraryNotFound(path: String)              // Python: FileNotFoundError from Library.open
@@ -88,6 +89,7 @@ public enum FreakError: Error, Equatable, Sendable {
 
     // -- composite (Python attached .completed to the exception)
     indirect case restoreFailed(underlying: FreakError, completed: [WriteReport])
+    indirect case applyFailed(underlying: FreakError, completed: [WriteReport])
 }
 
 public extension FreakError {
@@ -117,11 +119,12 @@ public extension FreakError {
             return .cancellation
         case .integrity:
             return .storage
-        case .entryNotFound, .libraryCorrupt, .libraryExists, .libraryNotFound:
+        case .entryNotFound, .collectionNotFound, .libraryCorrupt,
+             .libraryExists, .libraryNotFound:
             return .library
         case .snapshotMissingHashes, .snapshotMissingBlobs:
             return .usage
-        case .restoreFailed:
+        case .restoreFailed, .applyFailed:
             return .composite
         }
     }
@@ -175,6 +178,8 @@ extension FreakError: LocalizedError {
             return "\(path): \(detail)"
         case .entryNotFound(let entryID):
             return "no library entry \(entryID)"
+        case .collectionNotFound(let id):
+            return "no collection \(id)"
         case .libraryCorrupt(let path, let detail):
             return "\(path): \(detail)"
         case .libraryExists(let path):
@@ -189,6 +194,9 @@ extension FreakError: LocalizedError {
                 + "(snapshot with readBlobs and keepBlobs)"
         case .restoreFailed(let underlying, let completed):
             return "restore stopped after \(completed.count) slots: "
+                + (underlying.errorDescription ?? String(describing: underlying))
+        case .applyFailed(let underlying, let completed):
+            return "apply stopped after \(completed.count) slots: "
                 + (underlying.errorDescription ?? String(describing: underlying))
         }
     }

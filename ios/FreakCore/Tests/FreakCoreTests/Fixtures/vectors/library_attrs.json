@@ -1,0 +1,122 @@
+{
+  "description": "Additive library-index preset attributes: category (Category slug), favorite (bool), tags ([str]). 'roundtrip' cases assert an entry serializes and parses back identically; 'old_index_defaults' asserts an entry dict missing the new keys parses with defaults (additive back-compat, schema stays 1); 'category_census' pins the per-category counts helper. Regenerate: python3 tools/gen_vectors.py (from the repo root).",
+  "cases": [
+    {
+      "name": "roundtrip_lib00",
+      "entry_json": {
+        "id": "lib00",
+        "name": "Pad One",
+        "sha256": "ab53b438bbc557a4a87a03f1adb68c9f024f15026ce2413af15258a26059210d",
+        "meta_hex": "080000000000000033",
+        "slot": 0,
+        "added_at": "2026-09-01T00:00:00",
+        "tags": [
+          "ambient",
+          "pad"
+        ],
+        "category": "pad",
+        "favorite": true
+      },
+      "expected": {
+        "category": "pad",
+        "favorite": true,
+        "tags": [
+          "ambient",
+          "pad"
+        ]
+      }
+    },
+    {
+      "name": "roundtrip_lib01",
+      "entry_json": {
+        "id": "lib01",
+        "name": "Deep Bass",
+        "sha256": "780ee56e7147347cd887ad37cef62272814a76de1d9109006a2ff7dc03e894ef",
+        "meta_hex": "080000000000000033",
+        "slot": 1,
+        "added_at": "2026-09-01T00:00:00",
+        "tags": [
+          "sub"
+        ],
+        "category": "bass",
+        "favorite": false
+      },
+      "expected": {
+        "category": "bass",
+        "favorite": false,
+        "tags": [
+          "sub"
+        ]
+      }
+    },
+    {
+      "name": "roundtrip_lib02",
+      "entry_json": {
+        "id": "lib02",
+        "name": "Plain",
+        "sha256": "1bc0812523074ccc724119b78b8d681730e7213c3dcff99254c059d244adccb2",
+        "meta_hex": "080000000000000033",
+        "slot": 2,
+        "added_at": "2026-09-01T00:00:00",
+        "tags": [],
+        "category": "uncategorized",
+        "favorite": false
+      },
+      "expected": {
+        "category": "uncategorized",
+        "favorite": false,
+        "tags": []
+      }
+    },
+    {
+      "name": "old_index_defaults",
+      "entry_json": {
+        "id": "old0",
+        "name": "Legacy",
+        "sha256": "ab53b438bbc557a4a87a03f1adb68c9f024f15026ce2413af15258a26059210d",
+        "meta_hex": "080000000000000033",
+        "slot": 5,
+        "added_at": "2026-01-01T00:00:00"
+      },
+      "expected": {
+        "category": "uncategorized",
+        "favorite": false,
+        "tags": []
+      },
+      "note": "an index predating these keys loads with defaults (category=uncategorized, favorite=false, tags=[])"
+    },
+    {
+      "name": "category_census",
+      "entries": [
+        {
+          "category": "pad"
+        },
+        {
+          "category": "pad"
+        },
+        {
+          "category": "bass"
+        },
+        {
+          "category": "uncategorized"
+        }
+      ],
+      "expected_census": {
+        "uncategorized": 1,
+        "bass": 1,
+        "brass": 0,
+        "keys": 0,
+        "lead": 0,
+        "organ": 0,
+        "pad": 2,
+        "percussion": 0,
+        "sequence": 0,
+        "sfx": 0,
+        "strings": 0,
+        "template": 0,
+        "vocoder": 0
+      },
+      "note": "counts per category with every category key present (0 when none), so the UI chip row is stable"
+    }
+  ]
+}

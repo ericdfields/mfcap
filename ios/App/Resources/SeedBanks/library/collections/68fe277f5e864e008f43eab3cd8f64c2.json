@@ -1,0 +1,172 @@
+{
+  "schema": 1,
+  "id": "68fe277f5e864e008f43eab3cd8f64c2",
+  "name": "Ocular Semblance",
+  "created_at": "2026-09-01T22:40:55",
+  "provenance": {
+    "kind": "imported_bank",
+    "source": "Ocular Semblance"
+  },
+  "slots": {
+    "0": {
+      "sha256": "0934ff31b1c57400154cc6fb36dc3ec76b2bd3aa049219cf9ca8e654c173067e",
+      "name": "Aleph",
+      "meta_hex": "000000000000000000"
+    },
+    "1": {
+      "sha256": "b1ef1eac4a8d0e08779c6cd6993de5f563b035e4f4e1d5130d35ac3c98f19fdf",
+      "name": "Beit",
+      "meta_hex": "000000000000000000"
+    },
+    "2": {
+      "sha256": "beeb47a2a1b15c13ad077ed68a8e4876f7a9dc9acc6aeb034aa6b030d21b99be",
+      "name": "Gimel",
+      "meta_hex": "000000000000000000"
+    },
+    "3": {
+      "sha256": "a58644541a903e30d54bd2a9de2476ef6773c2c67a998ee7132e171786991973",
+      "name": "Daled",
+      "meta_hex": "000000000000000000"
+    },
+    "4": {
+      "sha256": "3821f2c30fe406fd4438823620ce009ab4b5513150eb48ba1e2a3b5c7a0401cd",
+      "name": "Hei",
+      "meta_hex": "000000000000000000"
+    },
+    "5": {
+      "sha256": "2fe70e9f4ade576d9257dad80daf5916aa82a23f10b6f8057a10a203ff9f5b7f",
+      "name": "Vav",
+      "meta_hex": "000000000000000000"
+    },
+    "6": {
+      "sha256": "fc950e9a0f7891d984422ddd779dbbb39fb50654003cda033e18e17377a2122d",
+      "name": "Zein",
+      "meta_hex": "000000000000000000"
+    },
+    "7": {
+      "sha256": "73b7adc6c9ba6028ffe5b3457b900b233fd44734b6090c9bc0eab6eef4653a8b",
+      "name": "Chet",
+      "meta_hex": "000000000000000000"
+    },
+    "8": {
+      "sha256": "8b9a37f2edfb70fd19e07f113abc171f3f2a01ec7e082b0164291fb717e4a2d8",
+      "name": "Tett",
+      "meta_hex": "000000000000000000"
+    },
+    "9": {
+      "sha256": "7f15036125475c3a8a4df2ea741e421b13e0eeb65aaf6ad2481283e352cfbddd",
+      "name": "Yod",
+      "meta_hex": "000000000000000000"
+    },
+    "10": {
+      "sha256": "3cb84d56ed4e33a5f1af70af9b861fa7c626fb9e6af9bb318769d3fc034c8e5d",
+      "name": "Taf",
+      "meta_hex": "000000000000000000"
+    },
+    "11": {
+      "sha256": "c45c2f94089351c4fa632bdf1c1a0c32293badb745fbfdfcaed66f18d8d86842",
+      "name": "Kafbeit",
+      "meta_hex": "000000000000000000"
+    },
+    "99": {
+      "sha256": "d2ead7413722c97633ca114c82af67aafd0fe7f9fae57c770745f7d0f5b0d956",
+      "name": "Lamed",
+      "meta_hex": "000000000000000000"
+    },
+    "100": {
+      "sha256": "b1a3b699e9d12568cb76602bf3492d215f5584ff8fb3f0a82014c31c6d908c88",
+      "name": "Memm",
+      "meta_hex": "000000000000000000"
+    },
+    "101": {
+      "sha256": "b4e3870f44d6d7c31fc341cd6cc9b25101171bd2f32538b0406e8b48a85710e3",
+      "name": "Nune",
+      "meta_hex": "000000000000000000"
+    },
+    "102": {
+      "sha256": "ef35dae358e1e1bd109ace4a8e69bf82da51e333cb06210fc75ee3d3984d03c2",
+      "name": "Samech",
+      "meta_hex": "000000000000000000"
+    },
+    "103": {
+      "sha256": "95258aecf0fe9163acacb6f0c76a6f2c0ac572f79a13d61d500bc65cd1ad90ec",
+      "name": "Ayin",
+      "meta_hex": "000000000000000000"
+    },
+    "104": {
+      "sha256": "0cb95f04c9f15a7cd1930a120c2eefa411dbfe3377e2fc476538c5bc6a6bd860",
+      "name": "Pei",
+      "meta_hex": "000000000000000000"
+    },
+    "105": {
+      "sha256": "13a0b5b2c23a181e4ef4d7b0c46dea41addb9b16e7d80b6e96b4f70d3b69ef58",
+      "name": "Tzadik",
+      "meta_hex": "000000000000000000"
+    },
+    "106": {
+      "sha256": "b1fafa9b7b0e2f5c6be75ab80502e13d60c0f99b1e5d306801e9d341054532cd",
+      "name": "Kuf",
+      "meta_hex": "000000000000000000"
+    },
+    "107": {
+      "sha256": "08370f5114a799c67ddccf74f0f221db07e63fbd93e145795051ccafe8f09254",
+      "name": "Reish",
+      "meta_hex": "000000000000000000"
+    },
+    "108": {
+      "sha256": "7542b70d1cdced0de6cd3ed746f023783bcd82274e6988acbaaff430ade80db2",
+      "name": "Shien",
+      "meta_hex": "000000000000000000"
+    },
+    "109": {
+      "sha256": "40b26e125e0a28bd6fd9b7c61f6901c73f6b279011b10a04a37c7b9d337e2370",
+      "name": "Yudaleph",
+      "meta_hex": "000000000000000000"
+    },
+    "110": {
+      "sha256": "0f79cc68c8e019b78dc575ef9e9ef3d2dca9d4c17c3a0224099127422fb3239f",
+      "name": "Yudbeit",
+      "meta_hex": "000000000000000000"
+    },
+    "111": {
+      "sha256": "00e4dda120d2750617c1c2b7b2fcba937c4eb2fa962d5002fbcb111d18bf0c22",
+      "name": "Yudgimel",
+      "meta_hex": "000000000000000000"
+    },
+    "112": {
+      "sha256": "e86ae520f4ad198322ec5ca3f0d26b472d6fefbb6fd957e165f79b20230bccce",
+      "name": "Yuddaled",
+      "meta_hex": "000000000000000000"
+    },
+    "113": {
+      "sha256": "8d0bb17a5a71307a45110b63d901e940a50c16925927a614258013102381adb1",
+      "name": "Yudhei",
+      "meta_hex": "000000000000000000"
+    },
+    "114": {
+      "sha256": "ad316b1ec07a541b228aab9012bb49d780874ba1035f38bf9c7d32bad1427d90",
+      "name": "Yuduav",
+      "meta_hex": "000000000000000000"
+    },
+    "115": {
+      "sha256": "b70778e63e6ab65664292762536d8d62f70be9164190f6876e7469870b11769a",
+      "name": "Yudzain",
+      "meta_hex": "000000000000000000"
+    },
+    "116": {
+      "sha256": "39f93d7c7be1c08b7651f613aa53d1b9dd73fe475836cbb1f2ada684094e9de1",
+      "name": "Yudchet",
+      "meta_hex": "000000000000000000"
+    },
+    "117": {
+      "sha256": "ffd6e00bd646287492b43d6b81280f839ff1b4f89d0d02e5da58b2c00384d833",
+      "name": "Yudtet",
+      "meta_hex": "000000000000000000"
+    },
+    "118": {
+      "sha256": "fec09aba6aad0337e2c74462d9f6c88a6f810aa22f9104b92887b8af4bec6c11",
+      "name": "Kafalef",
+      "meta_hex": "000000000000000000"
+    }
+  }
+}

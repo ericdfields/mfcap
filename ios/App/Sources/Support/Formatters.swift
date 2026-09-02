@@ -79,22 +79,6 @@ enum Format {
     }
 }
 
-// ------------------------------------------------------------ category byte
-
-/// The preset's meta byte 7 (long-0x52 payload[10]), display only (UX §7.4).
-/// The friendly-label table ships EMPTY until the mapping is verified against
-/// hardware — raw hex is the honest default. v1 never edits the category byte.
-enum CategoryByte {
-    /// Hardware-verified labels only. Deliberately empty for now (UX §20.3).
-    static let verifiedLabels: [UInt8: String] = [:]
-
-    static func label(for byte: UInt8) -> String? { verifiedLabels[byte] }
-
-    static let infoCopy =
-        "Category as stored by the synth. Labels appear once the mapping is "
-        + "confirmed against hardware."
-}
-
 // ------------------------------------------------------------- name rules
 
 /// Input-side validation for preset names (UX §8.3): up to 23 printable

@@ -1,0 +1,172 @@
+{
+  "schema": 1,
+  "id": "81b558443e794f7eafc97d08a0996e6c",
+  "name": "Clockwork Nocturnal",
+  "created_at": "2026-09-01T22:40:54",
+  "provenance": {
+    "kind": "imported_bank",
+    "source": "Clockwork Nocturnal"
+  },
+  "slots": {
+    "0": {
+      "sha256": "1473d7df9c977dc9cac52adfbe34f47297910db11325b6004d35337b877c1a8f",
+      "name": "Wait is this..",
+      "meta_hex": "000000000000000000"
+    },
+    "1": {
+      "sha256": "156e502e3bba0a2d3c7deca9a16f47c418e8853a8bec697cd63b06efaa3be004",
+      "name": "A Techno Stab.",
+      "meta_hex": "000000000000000000"
+    },
+    "2": {
+      "sha256": "6129e6f601865bf454bc9b45f5359cb503444cbc4498268a33f0a39452d6a1f4",
+      "name": "Tom Techno",
+      "meta_hex": "000100001001000000"
+    },
+    "3": {
+      "sha256": "7543e6ee24d1955473ce13a6304380a4c310aad66e7ba1bdd6a9751cff6a3df2",
+      "name": "From Detroit",
+      "meta_hex": "010000100001000000"
+    },
+    "4": {
+      "sha256": "d6c1952268b84eddea77fa6b17be0c1e809920e87198d27ac449ee2c27e064f2",
+      "name": "Closed Hat",
+      "meta_hex": "010101000000000000"
+    },
+    "5": {
+      "sha256": "c68003ad1b5ee138a3faf2bc0d0a9a77fc2c6cc7b66038187d50b0d9a1d21df9",
+      "name": "Crash",
+      "meta_hex": "010001100000000000"
+    },
+    "6": {
+      "sha256": "417c65dae18a4f2f4f6188962a806d632421593768ecba8c61fa31e12dcee867",
+      "name": "Back in Time",
+      "meta_hex": "000000000000000000"
+    },
+    "7": {
+      "sha256": "5484b483f5ab3f944bc431da9fe1f59e50613ed15b1b866eb1e4ab45294b2e5e",
+      "name": "C64 SiD CHiPZ",
+      "meta_hex": "000000000000000000"
+    },
+    "8": {
+      "sha256": "13b6b801a2a44b196acc723d3e38e64f6c13f6b2c119b56f88b41273264585a0",
+      "name": "Spectral Scene",
+      "meta_hex": "000000000000000000"
+    },
+    "9": {
+      "sha256": "7cd2bcf0c1abd06cf5973d744ec34409359841bffa048947163885b0031c2cfc",
+      "name": "Juno Sidechain",
+      "meta_hex": "100000100000000010"
+    },
+    "10": {
+      "sha256": "1230853d1191a1662516cb60ff9f6eb189e5a25bbb057e91fa4870552286c186",
+      "name": "Hocus Pocus",
+      "meta_hex": "000000000000000000"
+    },
+    "11": {
+      "sha256": "2d0393ffd0ab521ed0bfb749c8745425fa05c9c6a2e2b24a38ce6370ad1c7d82",
+      "name": "Kordz",
+      "meta_hex": "000000000000000000"
+    },
+    "99": {
+      "sha256": "8ebbf577fc3bcd73a861a7b7e607f869be524354eb635fa673d2c909c1083497",
+      "name": "LFO Dance",
+      "meta_hex": "000000000000000000"
+    },
+    "100": {
+      "sha256": "3e124c670453cebf94ec6e57b07f41b5b4b70d47b5393563f3ea78a35daf252e",
+      "name": "Aggressive 4T2",
+      "meta_hex": "000000000000111000"
+    },
+    "101": {
+      "sha256": "d6cb217b9e4b61609a45501b66beafdb7821660ee636a3a6c159b59a918555cf",
+      "name": "Claps",
+      "meta_hex": "000101001000000000"
+    },
+    "102": {
+      "sha256": "7032f31533d842ede744637c428e2e1e9bd3298708bc2f8cdb4f3f298000aa07",
+      "name": "Hollow Trip",
+      "meta_hex": "000000000000000000"
+    },
+    "103": {
+      "sha256": "05b34098652e4ad65833a34ea720ec794364c36cdee713ca9711b94ed033c879",
+      "name": "303 Decay",
+      "meta_hex": "000000001000010001"
+    },
+    "104": {
+      "sha256": "2ea83b27591cac77c4e8674f41ff434565789ad57b6e72f774e57a48a79b9fb8",
+      "name": "Dive Deeper",
+      "meta_hex": "000000000000000000"
+    },
+    "105": {
+      "sha256": "a8e56e94338bec46d69b7bd6591dadc1fa36fe0741b8e76c17422a4a889ec720",
+      "name": "Press Da Lead",
+      "meta_hex": "000100000001010000"
+    },
+    "106": {
+      "sha256": "eb05fd40e24a4537b38542cec0374ce07d9b64ec14d90213144ae8683c609490",
+      "name": "Crossing Paths",
+      "meta_hex": "000000000000000000"
+    },
+    "107": {
+      "sha256": "2394067a945d3a9006e20a7e2921c56aaebde476a039807dfd82503f555271ad",
+      "name": "Strange Filter",
+      "meta_hex": "000000000000000000"
+    },
+    "108": {
+      "sha256": "e77a857116970add987c8341fa2927fa63f7fdeeb1d0d3b9a14f55a18b63be8b",
+      "name": "Boulder Dashed",
+      "meta_hex": "000000000000000000"
+    },
+    "109": {
+      "sha256": "f6fb9cbbba1aa1e49103fe958cdf314aced1b489c110ad868199417707b2f7b9",
+      "name": "Modulus Four",
+      "meta_hex": "000000000000000000"
+    },
+    "110": {
+      "sha256": "ccaa839a81ebf0dc145ba4d140e8fbbc1c5cea3a53baaf112bc658ce6423188f",
+      "name": "Big Amounts",
+      "meta_hex": "000100001000010000"
+    },
+    "111": {
+      "sha256": "9b50df0cfbaedc17d23c4cd11486babedbc7519cb7afdd26cbaf24c449ece8ce",
+      "name": "6 0r 9 Blocks",
+      "meta_hex": "000000000000000000"
+    },
+    "112": {
+      "sha256": "1d46b0570045ed7cb3f60c1344801735759e00caf8df29915f2962f7e51b1b3e",
+      "name": "Kick Freak",
+      "meta_hex": "000000000000000000"
+    },
+    "113": {
+      "sha256": "51b44dd4f178ef9822e2aecb9bea5d0b433f6882950fe30f020af1d1e480444a",
+      "name": "Velocity Snare",
+      "meta_hex": "000101000000000000"
+    },
+    "114": {
+      "sha256": "d51690bab103fd7b080ccb6d3223a6d24b56f9f7fdcc4f1671a868e6e411667b",
+      "name": "Random Modal X",
+      "meta_hex": "000000000000000000"
+    },
+    "115": {
+      "sha256": "a5fc80364f658d041559bb2e5c0172528c50721c7b2cbf22fe8042b5a32643a6",
+      "name": "Some Chords",
+      "meta_hex": "000000000000000000"
+    },
+    "116": {
+      "sha256": "9e4c860734b8689a2d197542f11777b4323c661313182b70bc00571dcbe57006",
+      "name": "Too Fast",
+      "meta_hex": "000000000000000000"
+    },
+    "117": {
+      "sha256": "0d9da9291abcba6aab9b8761352a2654fcdbb0483bf2654db0fde5cadc02ed9f",
+      "name": "San Supra",
+      "meta_hex": "000000000000000000"
+    },
+    "118": {
+      "sha256": "4f023f3aefed1f795559056c758a8f688aa7fa4ad2a11b8e209a6417adf52d40",
+      "name": "Ionic Rush",
+      "meta_hex": "000000000000000000"
+    }
+  }
+}

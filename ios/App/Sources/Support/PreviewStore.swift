@@ -12,14 +12,14 @@ import SwiftUI
 enum PreviewStore {
     /// A fresh practice-mode AppModel for previews.
     static func model(profile: PracticeProfile = .factoryFresh) -> AppModel {
-        let model = AppModel(paths: .ephemeral())
+        let model = AppModel(paths: .ephemeral(), seedFromBundle: false)
         model.startPractice(profile, paced: false)
         return model
     }
 
     /// A model with no device — connect-screen and stale-cache previews.
     static func disconnectedModel() -> AppModel {
-        AppModel(paths: .ephemeral())
+        AppModel(paths: .ephemeral(), seedFromBundle: false)
     }
 }
 

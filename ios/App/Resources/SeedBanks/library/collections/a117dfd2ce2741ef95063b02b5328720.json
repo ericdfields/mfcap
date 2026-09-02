@@ -1,0 +1,172 @@
+{
+  "schema": 1,
+  "id": "a117dfd2ce2741ef95063b02b5328720",
+  "name": "Ambient Peaks",
+  "created_at": "2026-09-01T22:40:57",
+  "provenance": {
+    "kind": "imported_bank",
+    "source": "Ambient_Peaks.mfprojz"
+  },
+  "slots": {
+    "0": {
+      "sha256": "3298f89d9bca0f8424edb55e1585ce6d0817dcc788e3a9d930164ea488ea7c0c",
+      "name": "Frost",
+      "meta_hex": "000000000000000000"
+    },
+    "1": {
+      "sha256": "c205c5cd5ef5e23770d1291450c4e96d6d46380815c9d9265a322f05bd006fdf",
+      "name": "Air",
+      "meta_hex": "000000000000000000"
+    },
+    "2": {
+      "sha256": "d717afcb8daaf1c009c26c90f6ab3a1f87c6718615de4e529eec36b5a95dc4fd",
+      "name": "Breath",
+      "meta_hex": "000000000000000000"
+    },
+    "3": {
+      "sha256": "6f605e1920a94b8c5d95d1df5779a0907f71dc89b3818832e08ace2b813d35b5",
+      "name": "Tapes",
+      "meta_hex": "000000000000000000"
+    },
+    "4": {
+      "sha256": "d14540764efb5b583a15a425c79261f71a7ea7c56abd69a2e5239117c2940d5d",
+      "name": "Noix",
+      "meta_hex": "000000000000000000"
+    },
+    "5": {
+      "sha256": "47124356f72d9c652a2985b9cfc2fd30e81e0e9f363d33860f16140ffef3ebe5",
+      "name": "Eoxy",
+      "meta_hex": "000000000000000000"
+    },
+    "6": {
+      "sha256": "e847a684a298719cb863e2a05405a131081c4d8202edff8d520f0601e8cad25d",
+      "name": "Collid",
+      "meta_hex": "000000000000000000"
+    },
+    "7": {
+      "sha256": "a342c61a984ef8a2afa40ca00a9b26a2f3d58189c7cc1cc6736f63e503ce3c2c",
+      "name": "Blue",
+      "meta_hex": "000000000000000000"
+    },
+    "8": {
+      "sha256": "04a54e2f13bc9bbac24b249d0c89b6b38f58b0e2ac7ddb6f86f51b57e9f11963",
+      "name": "Thing",
+      "meta_hex": "000000000000000000"
+    },
+    "9": {
+      "sha256": "66768e4cbe1342dab30f9e62b042bc2144a602f128c3bd0c70c728b7b3782cbd",
+      "name": "Ocean",
+      "meta_hex": "000000000000000000"
+    },
+    "10": {
+      "sha256": "f77df999e31d0f99e770f51e038227d35b75abb2a1da2eaaf1298fce966789d1",
+      "name": "Mas",
+      "meta_hex": "000000000000000000"
+    },
+    "11": {
+      "sha256": "1b9f2dc623da5870030a062b0033fa931f1a211b77877cb909ff1c427531f5fa",
+      "name": "Droum",
+      "meta_hex": "000000000000000000"
+    },
+    "99": {
+      "sha256": "314bea900bf8c5ff3b1898cc86ee13d49f531b84656ad38a1c5d461697889a5c",
+      "name": "Joy",
+      "meta_hex": "000000000000000000"
+    },
+    "100": {
+      "sha256": "cc79e1c0c1606f8af5f3844e80f89e0a2b0334556dbb6cf50310b3d5257f55c4",
+      "name": "Only",
+      "meta_hex": "000000000000000000"
+    },
+    "101": {
+      "sha256": "dc84a0bab599b557440f977aedc9e8ec74baf5031bc5921eb120ec91412259b7",
+      "name": "Ringy",
+      "meta_hex": "000000000000000000"
+    },
+    "102": {
+      "sha256": "59052a83a517a773e700ec3afc3767ecf6dbde5d4dbf5dc7edf5b384563cce4e",
+      "name": "Nagra",
+      "meta_hex": "000000000000000000"
+    },
+    "103": {
+      "sha256": "7e20a2f0d84ed0c987c008eb36608182333a12db519b67e94b0c6c6bedbdfb69",
+      "name": "Hiver",
+      "meta_hex": "000000000000000000"
+    },
+    "104": {
+      "sha256": "ea0a94be366b558c8eda67d2323a0ccc907226654d42f0d0b48830517a39befd",
+      "name": "Bubble",
+      "meta_hex": "000000000000000000"
+    },
+    "105": {
+      "sha256": "ac59709fbbf173e17aa2f50ad2c50c3e89f69e216a31ccab0d398a5ecb3bffd7",
+      "name": "Joging",
+      "meta_hex": "000000000000000000"
+    },
+    "106": {
+      "sha256": "3599598a0b2709043f5d30f29a1a18c083d7ff02d20726e6a6d0449f5895786a",
+      "name": "PikPok",
+      "meta_hex": "000000000000000000"
+    },
+    "107": {
+      "sha256": "9060a83af8a06e19ddbae206f8d63943463efd54637e7412b1568e078c1e91fd",
+      "name": "Ambi",
+      "meta_hex": "000000000000000000"
+    },
+    "108": {
+      "sha256": "e52ab5b5c91b32208fdd4e3e63baa895ccded9d7bacfbe8d7f3cba5b53506858",
+      "name": "Onira",
+      "meta_hex": "000000000000000000"
+    },
+    "109": {
+      "sha256": "946a582011cc9d2f78d0e7a08dc6f48a6388119b7a84feb36c14de39f602f989",
+      "name": "Koda",
+      "meta_hex": "000000000000000000"
+    },
+    "110": {
+      "sha256": "cc277cbdac3d9a39aac33c4d2c6096e6c315ab49feae92595d7ed8c3862e889f",
+      "name": "Neige",
+      "meta_hex": "000000000000000000"
+    },
+    "111": {
+      "sha256": "7d1f76ec8306221721cdd4b9d89e920e27ae5f426c6f9ba047a2028c3b58391d",
+      "name": "Iceland",
+      "meta_hex": "000000000000000000"
+    },
+    "112": {
+      "sha256": "19fff7bfd10fe0ac60b53e6fd7fe37c145fd939216b7702e7617d68a5351457a",
+      "name": "Inertia",
+      "meta_hex": "000000000000000000"
+    },
+    "113": {
+      "sha256": "ee1ec9fa6522ed060285faadd57d79243271db5d2172ab2631cb9fedb1d5338a",
+      "name": "Graph",
+      "meta_hex": "000000000000000000"
+    },
+    "114": {
+      "sha256": "33eb6b64d007796587d7c19bb607fca7f44355916a8c882721e9cc955225a7e9",
+      "name": "December",
+      "meta_hex": "000000000000000000"
+    },
+    "115": {
+      "sha256": "42a61d891f416bd6e574eec378d2020673f473778c2484591e8949899f73577c",
+      "name": "Routes",
+      "meta_hex": "000000000000000000"
+    },
+    "116": {
+      "sha256": "9d9e15b7db4d94654573a52270ba181ebfd28c3b1fba46e854fc90bef9b0c0b3",
+      "name": "Nord",
+      "meta_hex": "000000000000000000"
+    },
+    "117": {
+      "sha256": "6afbf5acc5d8b3484acec4acee970216d22523e4b9f9bc1de2b302e713542828",
+      "name": "Bam",
+      "meta_hex": "000000000000000000"
+    },
+    "118": {
+      "sha256": "8041521a152fa02e1b06ec767e5e1abe56e1a011e96ab678c3d8be6e7ccc5a06",
+      "name": "Birds",
+      "meta_hex": "000000000000000000"
+    }
+  }
+}

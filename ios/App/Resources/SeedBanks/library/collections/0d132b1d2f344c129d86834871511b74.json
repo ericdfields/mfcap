@@ -1,0 +1,172 @@
+{
+  "schema": 1,
+  "id": "0d132b1d2f344c129d86834871511b74",
+  "name": "Tokyo 88",
+  "created_at": "2026-09-01T22:40:56",
+  "provenance": {
+    "kind": "imported_bank",
+    "source": "Tokyo 88"
+  },
+  "slots": {
+    "0": {
+      "sha256": "4edd5424ea77da0d0c6b83914120921586f1c9682e8054655fac571b69214c68",
+      "name": "RubbeR",
+      "meta_hex": "000000000000000000"
+    },
+    "1": {
+      "sha256": "3420ee1abe8d00e51a22e5f0a22d8a84b08dbff10e4ceb71753d6e050ce249c6",
+      "name": "GummY",
+      "meta_hex": "000000000000010100"
+    },
+    "2": {
+      "sha256": "fc20006851f35407cf56b10f79063362e3dd1617502fd6d8fffed04ca3d24bae",
+      "name": "OkinjawA",
+      "meta_hex": "000000100000001100"
+    },
+    "3": {
+      "sha256": "1ec2f3925fa06c215388fd4851b4f20b94a2cb6955ebfb66f81d625c8aa61306",
+      "name": "RadaR",
+      "meta_hex": "000000000000000000"
+    },
+    "4": {
+      "sha256": "3f30fc29bccb526e19d4e7f5aa8498ad9f64dc30eb5a5a22373603a70501b42d",
+      "name": "MbelE",
+      "meta_hex": "000000000000000000"
+    },
+    "5": {
+      "sha256": "8afe399159b91e0cb53425256652f1cae2a18d4def0993dc76142ecbc9817c08",
+      "name": "GluE",
+      "meta_hex": "000000000000000000"
+    },
+    "6": {
+      "sha256": "bbaa0eb183ab8b701bd4d9f9dc5623e4f17378c560ef942cd1b4ff077d0126c4",
+      "name": "KiirK",
+      "meta_hex": "000000000000000000"
+    },
+    "7": {
+      "sha256": "97e0d2b849b49da0765f24aaed24e6ed5311a378df2c808a41552752d9369c83",
+      "name": "MeismA",
+      "meta_hex": "010000100000000100"
+    },
+    "8": {
+      "sha256": "eda1b29fdfd1f348930b030471d9068c36a9282a0a5ff8c99de1bb2463a05860",
+      "name": "AzoT",
+      "meta_hex": "000000000000000000"
+    },
+    "9": {
+      "sha256": "69146a0f0af13a5a6f6cb8b686d8b18800bb0d8ff5267de2b478c5d6993e079d",
+      "name": "KurowA",
+      "meta_hex": "010000000000101000"
+    },
+    "10": {
+      "sha256": "39e18d57165f44d666c5f5b53056a514abdd4bf4d5fa73d87965c536fca5b102",
+      "name": "ZtilT",
+      "meta_hex": "000000001000101000"
+    },
+    "11": {
+      "sha256": "f0e996f9b26370189888305d45d43c9394b9942f22cc45da74693bf7d74d5c9b",
+      "name": "JournY",
+      "meta_hex": "000100000010010000"
+    },
+    "99": {
+      "sha256": "a01c5d69b03f0c28809a3ae85f55fc2b2a4a4e5488cd1c427bb53b1169426420",
+      "name": "MicroVersE",
+      "meta_hex": "010000000000110000"
+    },
+    "100": {
+      "sha256": "b1e80ce897e6b5a2ca47890ab137ec3021deeb2b8c74632b0a98e1b61a180600",
+      "name": "KymchY",
+      "meta_hex": "000000000000000000"
+    },
+    "101": {
+      "sha256": "992e1e06907960349f70a9662e033ca79176a83f22e0e391e3e7c3324ceb21a0",
+      "name": "StarTroopeR",
+      "meta_hex": "000000000000111000"
+    },
+    "102": {
+      "sha256": "dccf42440472f708037278882b7fdf953eaef61cdb2e2e30e2eb1a4817a9086e",
+      "name": "TelecoM",
+      "meta_hex": "000000000000000000"
+    },
+    "103": {
+      "sha256": "df518cf55786b0633f95f485dd11b00d5c7c783108d0d2029d156ab21cc876b2",
+      "name": "FusiL",
+      "meta_hex": "000000000000000000"
+    },
+    "104": {
+      "sha256": "668204bdcfac55a5dd574be3150bd829b12198ea88a837bca7d38a555a078e91",
+      "name": "DeepBluE",
+      "meta_hex": "000000000000000000"
+    },
+    "105": {
+      "sha256": "5fca32c3f65fdf32883556a402573b1a6f750488814c3d69821977d6d9c58b98",
+      "name": "SaturnE",
+      "meta_hex": "000000100001000010"
+    },
+    "106": {
+      "sha256": "ff44a3d448f8e38bee6d0fd9d5b0fc9bb9bc7a37b7b3826ffcb33391ff577639",
+      "name": "SommA",
+      "meta_hex": "010000000000000000"
+    },
+    "107": {
+      "sha256": "71e4ad07776e99614b99cf7826076da8432278eba33a3f5f43cd3754e8d1762b",
+      "name": "XanA",
+      "meta_hex": "000000000000000000"
+    },
+    "108": {
+      "sha256": "673bcb43727fcbe1224aaeca5bb1225fd25282d704f906e8d65bb987f604f19d",
+      "name": "NeuroaK",
+      "meta_hex": "010000000000000000"
+    },
+    "109": {
+      "sha256": "13fd0aa2e48ff98feca1e840d48fadc65f17ae3598ff2f181ff08a4c546ae5b3",
+      "name": "BlckBrD",
+      "meta_hex": "010100000000010000"
+    },
+    "110": {
+      "sha256": "5168a8db537bd7562e57b34594a567e3ac897072025d0c5e18c34ebeae324680",
+      "name": "GuilO",
+      "meta_hex": "000000000000010000"
+    },
+    "111": {
+      "sha256": "7406fa0bab291a8f0f3c5fc5c8d29a490f446643472d763a07ba57f7e23cfeaf",
+      "name": "SoftEartH",
+      "meta_hex": "010000100000010000"
+    },
+    "112": {
+      "sha256": "a563cdb4704af44fdd68afbd46cf9c34391ecf739fa88910371dddb163a5ffde",
+      "name": "TyphoO",
+      "meta_hex": "000000000000010000"
+    },
+    "113": {
+      "sha256": "5887300d1514fa635400e3f221c0d84a973051ba286982206a6e2455d81e77a0",
+      "name": "PeuLLL",
+      "meta_hex": "000100000000010000"
+    },
+    "114": {
+      "sha256": "e6bc59f25e7c2a7efd4ea49c4a11fbfbe202f1978b648ad0895b8f36991e2d1c",
+      "name": "TombolA",
+      "meta_hex": "000000000000110100"
+    },
+    "115": {
+      "sha256": "29bb5c7aa6d2013b5b691658e2414e6c0450d25dcf00a7e72ae5bf933c8b5b48",
+      "name": "KyotO",
+      "meta_hex": "000000000000010000"
+    },
+    "116": {
+      "sha256": "59c15eb6375d48aeba01092b9d3efc0e8c59fea66d750fcef107971037e3eb48",
+      "name": "CeremonY",
+      "meta_hex": "000000000100000000"
+    },
+    "117": {
+      "sha256": "91f24b6258c71e12dbd60bc874f6aaf54b1669573a3defac7ca4491fd4fae1b3",
+      "name": "FlutcH",
+      "meta_hex": "000000000010100010"
+    },
+    "118": {
+      "sha256": "77a8a007c61100d80051169c01c963063ae12068fea7d7fc8f4d28aa0a8fe216",
+      "name": "DreamY",
+      "meta_hex": "000000000010110010"
+    }
+  }
+}

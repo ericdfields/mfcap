@@ -30,9 +30,33 @@ struct SidebarView: View {
             Section("Library") {
                 sidebarRow(.library(tag: nil), label: "All Presets",
                            systemImage: "books.vertical")
+                sidebarRow(.favorites, label: "Favorites",
+                           systemImage: "heart")
                 ForEach(model.libraryModel.tags, id: \.self) { tag in
                     sidebarRow(.library(tag: tag), label: tag,
                                systemImage: "tag")
+                }
+            }
+            Section("Collections") {
+                sidebarRow(.collections, label: "All Collections",
+                           systemImage: "square.stack.3d.up")
+                ForEach(model.collectionsModel.sorted) { coll in
+                    Button {
+                        model.sidebar = .collection(id: coll.id)
+                        model.detail = .collection(id: coll.id)
+                    } label: {
+                        HStack {
+                            Label(coll.name, systemImage: "square.stack")
+                                .font(.subheadline)
+                                .lineLimit(1)
+                            Spacer()
+                            if model.sidebar == .collection(id: coll.id) {
+                                Image(systemName: "checkmark")
+                                    .font(.caption).foregroundStyle(.tint)
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
                 }
             }
             Section {

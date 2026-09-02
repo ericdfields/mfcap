@@ -55,6 +55,12 @@ struct RootView: View {
         .sheet(item: $model.verifyMismatch) { presentation in
             VerifyMismatchSheet(presentation: presentation)
         }
+        .sheet(item: $model.newCollectionRequest) { request in
+            NewCollectionSheet(request: request)
+        }
+        .sheet(item: $model.collectionApplyRequest) { plan in
+            CollectionApplyPlanSheet(plan: plan)
+        }
         // ------------------------------- §9 confirmations (dialog + sheet)
         .sheet(item: planSheetConfirmation) { pending in
             SendPlanSheet(pending: pending)
@@ -87,6 +93,10 @@ struct RootView: View {
             }
         case .library(let tag):
             LibraryListView(tag: tag)
+        case .favorites:
+            FavoritesListView()
+        case .collections, .collection:
+            CollectionsListView()
         case .sync:
             SyncListView()
         case .backups:
@@ -105,6 +115,8 @@ struct RootView: View {
             SyncSlotDetailView(slot: slot)
         case .backup(let folder):
             BackupDetailView(folderName: folder)
+        case .collection(let id):
+            CollectionDetailView(collectionID: id)
         case nil:
             ContentUnavailableView("Select a slot or preset",
                                    systemImage: "pianokeys")
@@ -199,6 +211,8 @@ struct RootView: View {
     private static func sidebar(from raw: String) -> SidebarSelection {
         switch raw {
         case "library": return .library(tag: nil)
+        case "favorites": return .favorites
+        case "collections": return .collections
         case "sync": return .sync
         case "backups": return .backups
         default: return .device
@@ -208,6 +222,9 @@ struct RootView: View {
     private static func store(_ selection: SidebarSelection?) -> String {
         switch selection {
         case .library: return "library"
+        case .favorites: return "favorites"
+        // A specific collection restores to the section (never a resumed op).
+        case .collections, .collection: return "collections"
         case .sync: return "sync"
         case .backups: return "backups"
         default: return "device"

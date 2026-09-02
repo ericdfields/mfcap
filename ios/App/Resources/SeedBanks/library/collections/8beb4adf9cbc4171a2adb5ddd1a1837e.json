@@ -1,0 +1,177 @@
+{
+  "schema": 1,
+  "id": "8beb4adf9cbc4171a2adb5ddd1a1837e",
+  "name": "Immersive Melodies",
+  "created_at": "2026-09-01T22:40:55",
+  "provenance": {
+    "kind": "imported_bank",
+    "source": "Immersive Melodies"
+  },
+  "slots": {
+    "0": {
+      "sha256": "069dca98177e6bc3c14dece4738ff63cc837d8fcc12695518b0276129053ca6f",
+      "name": "Phea",
+      "meta_hex": "000000000000000000"
+    },
+    "1": {
+      "sha256": "c68421b6bd80db1cb2c1d7ab71089f57a79ff82c1777b975a4f0e4554564975b",
+      "name": "Dense",
+      "meta_hex": "000100001000000000"
+    },
+    "2": {
+      "sha256": "aa88906e95e86b1d565c798b50741dbbf02d3bb67b546fa6dfbc7ea860fbb5c7",
+      "name": "Spectral Path",
+      "meta_hex": "100000100000100000"
+    },
+    "3": {
+      "sha256": "dc01b9c6c01cb09c01f29ccddfa85f2ac3c99e44af2bb9d92b28968f68ed861c",
+      "name": "Uoid",
+      "meta_hex": "000000000000000000"
+    },
+    "4": {
+      "sha256": "97fa009c37eaf0249a3e93de754ae60d9cce0b973e5487c8ed82fa17aaaefee9",
+      "name": "Micro Iron",
+      "meta_hex": "000000000000000000"
+    },
+    "5": {
+      "sha256": "87d574e35a72f3dbc0fb599e7b13d9ad604d01752269602ea730edbaa4e59409",
+      "name": "Quasar",
+      "meta_hex": "000000000000000000"
+    },
+    "6": {
+      "sha256": "96e6a8d40068e17a0f10bddcb45a3fc3d47d14de19c710d8792f102179878a50",
+      "name": "Dusty",
+      "meta_hex": "000100000010000010"
+    },
+    "7": {
+      "sha256": "d06d830e029fc2fe6cf62c1e47455d9d70c9fae0f75896708d48efe4c26476a7",
+      "name": "Afterformula",
+      "meta_hex": "000100000001000010"
+    },
+    "8": {
+      "sha256": "774960b8f7d158d719fbac081de3d05d7fb975d0fa3c3ff12a4ccc0f3c3ef562",
+      "name": "Phobium",
+      "meta_hex": "000000001000100010"
+    },
+    "9": {
+      "sha256": "4a219feeb77015b60afb1334b5f5b7ac249ab912ee2cb010ff2824cf00206048",
+      "name": "Drone Maybe",
+      "meta_hex": "000000000000000000"
+    },
+    "10": {
+      "sha256": "20fb7c34895051d3e4c0436378dfc4cfda6c82c70a048759bf77c96f3829e611",
+      "name": "Hazy",
+      "meta_hex": "000101000000001010"
+    },
+    "11": {
+      "sha256": "f2fbc5ce45a66ab310411a8822841dac789a277f5e12f8aafdd62677538a3080",
+      "name": "Tech Ballad",
+      "meta_hex": "000000000000000000"
+    },
+    "99": {
+      "sha256": "5bf7926dc88d870fff5b03b67f6798450a8dff6c777246298ba750322f45e73c",
+      "name": "Chromas",
+      "meta_hex": "000100001001000000"
+    },
+    "100": {
+      "sha256": "b1dc5d1be7b8d4104258421d326a31eee1a73aa4418cd8ccfef3806493496915",
+      "name": "Pink Umbrella",
+      "meta_hex": "000000000000000000"
+    },
+    "101": {
+      "sha256": "026586dd59a3d51f3110c5289212c21621fb74b8eb46a1fcab7670240cdb2db8",
+      "name": "MicroMacro",
+      "meta_hex": "000000000000000000"
+    },
+    "102": {
+      "sha256": "88d5b34b7ad4058e36ad2ff0cf72b6e4e43f355bffaf9e206c9c9c847e00bdda",
+      "name": "Sagitarius A",
+      "meta_hex": "000000000000000000"
+    },
+    "103": {
+      "sha256": "a7734fd693c0c98a77b3062a8585e7db5a74924cbf4cbf839d9f015bb1ead38c",
+      "name": "Sagitarius B",
+      "meta_hex": "000000000000000000"
+    },
+    "104": {
+      "sha256": "1857523c33dbf5f3bd9cc1d5aa5e6be1b0fe13efffe056019d146f05babc5d9a",
+      "name": "Spines",
+      "meta_hex": "000000000000000000"
+    },
+    "105": {
+      "sha256": "3e5bd8b7b6be5548839fab7c08b257bd85ce1539dd793816f227431ed629802d",
+      "name": "Magnetic",
+      "meta_hex": "000000000000000000"
+    },
+    "106": {
+      "sha256": "117456a2114aafa9fd3149714bbba6ff3ffedd48a038d9b742725611c200d5a6",
+      "name": "Shogun",
+      "meta_hex": "000000000000000000"
+    },
+    "107": {
+      "sha256": "32c845736b90882cc54900e820a67c4f361ad72e095e2e29addfb7931828ea7f",
+      "name": "Micro Mass",
+      "meta_hex": "000000000000000000"
+    },
+    "108": {
+      "sha256": "9a8993cedd7cc8f1b9b240b4f0e2437dd6819db9e8ca2d604f2801d460a7844c",
+      "name": "Barricade",
+      "meta_hex": "000000000000000000"
+    },
+    "109": {
+      "sha256": "906f90932015bd430b31161090e3f27350271e397013a3b752750120ebf4e5c0",
+      "name": "Micromatic",
+      "meta_hex": "000011000001101000"
+    },
+    "110": {
+      "sha256": "611538b773fb1f3c9697afc5030160c16e2819589bec818a64dde0cf09db1a8f",
+      "name": "Crystal Ice",
+      "meta_hex": "000001000001100100"
+    },
+    "111": {
+      "sha256": "7b03cd717f4909daf402c9b04605042a0aa9e53cd6b4b247018ad03bc4217780",
+      "name": "Rainy Day",
+      "meta_hex": "000000000000000000"
+    },
+    "112": {
+      "sha256": "0363baee230809be34c3e7bc907630968ae36cd68f92bb28243f84b382e300b1",
+      "name": "Valley Breathe",
+      "meta_hex": "010000100001100100"
+    },
+    "113": {
+      "sha256": "f91ab7954d6f7cdace69cc81106b71bab73f72287c347be103c5ca8110fdb16b",
+      "name": "Cores",
+      "meta_hex": "000000000000000000"
+    },
+    "114": {
+      "sha256": "da80b479b5efed99991f73493534eec452c7c653998290de44e0493d10b9ad6d",
+      "name": "Southern Sky",
+      "meta_hex": "000000000000000000"
+    },
+    "115": {
+      "sha256": "5639f4065c763966ac0ea9019790a73220b2205c72e5e08bb1bd0515901e2272",
+      "name": "Aerial",
+      "meta_hex": "000000000000000000"
+    },
+    "116": {
+      "sha256": "6aeb87017566f4ef5c439ad4a8dcc1a16f62ddd1691531985ffc030389e60378",
+      "name": "Orion",
+      "meta_hex": "000100001000100010"
+    },
+    "117": {
+      "sha256": "82e2a87a24d77b86c231796bf8accf41982eefe49f46b64a0773a773dec2361b",
+      "name": "Micro Memory",
+      "meta_hex": "010100000001100000"
+    },
+    "118": {
+      "sha256": "89407a5e147af8ebeb94b09daf0477c6b709f197da6dde39925e07a4c2133ad5",
+      "name": "Soft Organic",
+      "meta_hex": "000000000000000000"
+    },
+    "119": {
+      "sha256": "12a06eb0a4cc9ab8a9ddcad31f95b0a1c50d61dea2393eaae87deeb651d06b8b",
+      "name": "Kosmos",
+      "meta_hex": "000000000000000000"
+    }
+  }
+}

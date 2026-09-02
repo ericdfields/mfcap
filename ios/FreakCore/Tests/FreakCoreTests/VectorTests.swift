@@ -12,6 +12,9 @@ private let handledFiles: Set<String> = [
     "device_state.json", "expendable.json", "frames.json",
     "name_replies.json", "read_dump.json", "reply_lag.json",
     "sync_diff.json", "write_burst.json", "write_conversation.json",
+    // collections & categories vectors — consumed by CategoryAttributesTests
+    // and CollectionsTests (not by this frame-transcript runner).
+    "category.json", "library_attrs.json", "collections.json",
 ]
 
 private func expectWireLogMatches(_ log: [WireLogEntry],

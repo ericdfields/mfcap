@@ -1,0 +1,172 @@
+{
+  "schema": 1,
+  "id": "c3f095350972464a920c5a5f3d9e6a76",
+  "name": "Back To The 80s",
+  "created_at": "2026-09-01T22:40:54",
+  "provenance": {
+    "kind": "imported_bank",
+    "source": "Back To The 80s"
+  },
+  "slots": {
+    "0": {
+      "sha256": "1340312608af78d079024858c09f63b7269179cbc44179d6e114b4d879a94db8",
+      "name": "Paid Them",
+      "meta_hex": "110000100000000000"
+    },
+    "1": {
+      "sha256": "c79c8018248c4a75d20f9dc435374269973be22c360ca40ac38618a49ac29d82",
+      "name": "Saw in Half",
+      "meta_hex": "010100000000000000"
+    },
+    "2": {
+      "sha256": "034f2e025039e76c3e3935e792670869a93b51d58ca5ceed40c55273e2df743f",
+      "name": "Low Rider",
+      "meta_hex": "000000000000000000"
+    },
+    "3": {
+      "sha256": "6c11c94d26f78baf52285459002513e46555924088625b17649ac46404c86651",
+      "name": "Gotcha",
+      "meta_hex": "000100001000010000"
+    },
+    "4": {
+      "sha256": "db19e9919b21fb8f59156b4bed482a8a57c9f2c08016142e15cde3f53296c0a5",
+      "name": "Chaos Theory",
+      "meta_hex": "000000101000010000"
+    },
+    "5": {
+      "sha256": "b57a7fb35a88d5c81032e3a9bb0f2151bdf4763cad0b712f4f1a4a92d3a574dd",
+      "name": "JZ 1983",
+      "meta_hex": "000000000000000000"
+    },
+    "6": {
+      "sha256": "f6dce4605566508944743afc9f0358f2fa24d87828cf300b2b231c21e226a14f",
+      "name": "Alone On A6",
+      "meta_hex": "000000100000010010"
+    },
+    "7": {
+      "sha256": "4d3d804bb986dd830225fe040baa4422df6791d2eda9a5862ff4bf77c8646806",
+      "name": "Pluckey",
+      "meta_hex": "000100001000010000"
+    },
+    "8": {
+      "sha256": "468089d991f553e66bcc464ab4d232f40b20513ea88e29f5f2985912fea242db",
+      "name": "Megalomania",
+      "meta_hex": "100010000001000000"
+    },
+    "9": {
+      "sha256": "a49e25499e6bfa6fbc7949c26e17ba5fc617cc4527c776d64e327ef89108e81e",
+      "name": "Wood Bass",
+      "meta_hex": "000100010010000000"
+    },
+    "10": {
+      "sha256": "fc5fdaa8cd49fe37e5f6a5c6e303ae7dc98f7e1982a9bf86e378aa763f78fc09",
+      "name": "New Electrons",
+      "meta_hex": "000000000011000010"
+    },
+    "11": {
+      "sha256": "61be61605b687487edef4be59ae66c203baae8d29ddfc74a605b81a16bcf9a9c",
+      "name": "Brutality",
+      "meta_hex": "000000000000000000"
+    },
+    "99": {
+      "sha256": "e926131ea6640315066c240e1dcac055476046d1cad7e15f86ae3d20d64c720c",
+      "name": "Punch Through",
+      "meta_hex": "000000000000000000"
+    },
+    "100": {
+      "sha256": "56b4abf7c3e3ffd567591d0b212a7814105ffeb3aa358c4ebd101fe4c72dcfb1",
+      "name": "Gold Rush",
+      "meta_hex": "000000000000000000"
+    },
+    "101": {
+      "sha256": "a06b8037a49d1ac4926c3b2a012e5faad0c6a531bbba82c38e1c7cf2c802ee54",
+      "name": "Heart to Beat",
+      "meta_hex": "010010000001000000"
+    },
+    "102": {
+      "sha256": "3adc7691d9a6695ee3f87decd9fdfe6e48d2cd72e6f9b937fad8e0bc616b455a",
+      "name": "Voyager",
+      "meta_hex": "000000000000000000"
+    },
+    "103": {
+      "sha256": "f8b5d9a139d3b6ce2903f6c890b64b7c1745d41f12651d3db21ae7ef99342f92",
+      "name": "Warbled Sinus",
+      "meta_hex": "010000000001000000"
+    },
+    "104": {
+      "sha256": "9946e4337da460cb4fd4002f0af55156f1f6ab354187152493f00941b5e17a44",
+      "name": "Bright Path",
+      "meta_hex": "000000100000110000"
+    },
+    "105": {
+      "sha256": "2e1bb442e5da96891b9674024e3dc341132157f5e106f721a5ece5f8cda6280c",
+      "name": "Mean Moves",
+      "meta_hex": "000000000000000000"
+    },
+    "106": {
+      "sha256": "08fec08f219b996d913eac7c0b16350077de8895d3f3669f28b23c02a87df5da",
+      "name": "Wilderness",
+      "meta_hex": "000000000000000000"
+    },
+    "107": {
+      "sha256": "8280ef6b3818d607b216f931cbc8acdbe4ae218fb6a423a40a7e45547debdc60",
+      "name": "Take Exit 15",
+      "meta_hex": "000000000000000000"
+    },
+    "108": {
+      "sha256": "7a7b20f0a87d6bab97cab181902545c7a73eded0a175be2b42de5cf3eaac420a",
+      "name": "Eon Squelches",
+      "meta_hex": "000000110000000010"
+    },
+    "109": {
+      "sha256": "a2ea1365f104aeb7b2f70ffcfd05cfa4b301231e090851099b07bb5a5e9d1c82",
+      "name": "Beautiful Dirt",
+      "meta_hex": "000000010000010010"
+    },
+    "110": {
+      "sha256": "caa1d9e47cc26ee483fa418ddae35fedbb2e0a1a9792d0073afef89a959ad71a",
+      "name": "Smooth as Silk",
+      "meta_hex": "000000000000000000"
+    },
+    "111": {
+      "sha256": "cd751a228c1d585441bbbea8e8be85a2c0ebc1ccc204c5035cf32d5e2dbf5364",
+      "name": "Bellharmonic",
+      "meta_hex": "000000000000000000"
+    },
+    "112": {
+      "sha256": "e5dcb74992543d9c8347794de804f68a04c29235b1509cf82d1f8a24415e3809",
+      "name": "FlipFlop Piano",
+      "meta_hex": "000000000000000000"
+    },
+    "113": {
+      "sha256": "67d3012e36001571dd05b4072d1cbf60cc4fd95ebc3d7b5ecac881a70505752f",
+      "name": "Thick Biscuits",
+      "meta_hex": "000100100000010000"
+    },
+    "114": {
+      "sha256": "e2a2a689a14906b82fa0fcb89cdc5ea41a122165f5efaa340b964269f5748af5",
+      "name": "Hammered Zones",
+      "meta_hex": "000000000000000000"
+    },
+    "115": {
+      "sha256": "b7ce9f7fc21c6006b98c04500a88086cfb65a93ba1fd033e08f39222173dc263",
+      "name": "Manic Reeser",
+      "meta_hex": "000000010001000010"
+    },
+    "116": {
+      "sha256": "e9ebc789308c0238b2d1e661f2bd0ceef1feddc0276d9031003921ea27857420",
+      "name": "Fat Sonar",
+      "meta_hex": "100000100000000100"
+    },
+    "117": {
+      "sha256": "a59a54d308188d74ef6db3cba115aad93950acb44436ff157cd7b48c60a32ef8",
+      "name": "Block Zero",
+      "meta_hex": "000000000000000000"
+    },
+    "118": {
+      "sha256": "b54269cc38b3cb6444019a8ad85a839313e48cfd3163389b6cfafc7640d47166",
+      "name": "Neon Traveller",
+      "meta_hex": "000000100000100100"
+    }
+  }
+}

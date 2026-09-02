@@ -89,6 +89,7 @@ struct OverwritePlan: Identifiable {
         case bulkSync        // sync bulk apply
         case restore         // backup → device
         case undo            // undo/redo re-write (already §9-consented)
+        case applyCollection // switch the device to a saved collection (§27)
     }
 
     /// §9.5 — severity scales with blast radius.
@@ -133,6 +134,8 @@ struct OverwritePlan: Identifiable {
             return "Restore \(writeCount) Slot\(writeCount == 1 ? "" : "s")"
         case .bulkSync:
             return "Write \(writeCount) Slot\(writeCount == 1 ? "" : "s") to Device"
+        case .applyCollection:
+            return "Switch — Write \(writeCount) Slot\(writeCount == 1 ? "" : "s")"
         case .send, .undo:
             if items.count == 1, let item = items.first {
                 if item.victim.isUnknown { return "Overwrite Anyway" }

@@ -19,24 +19,43 @@ uppercase two-digit hex, space-separated ("F0 00 20 6B ...").
 """
 from __future__ import annotations
 
+import base64
+import hashlib
+import io
 import json
+import os
 import sys
+import tempfile
+import zipfile
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
+sys.path.insert(0, str(REPO_ROOT / "tools"))
+
+import mbp_import                                          # noqa: E402
 
 from microfreak import protocol as p                      # noqa: E402
 from microfreak.analysis import find_expendable           # noqa: E402
-from microfreak.library import Library, LibraryEntry      # noqa: E402
-from microfreak.model import (DeviceSnapshot, Preset,     # noqa: E402
-                              SlotRecord, TimingReport)
+from microfreak.collections import (ApplyOptions,         # noqa: E402
+                                    PresetCollection, Provenance,
+                                    ProvenanceKind, collection_from_json,
+                                    collection_to_json, plan_apply)
+from microfreak.library import (Library, LibraryEntry,    # noqa: E402
+                                _entry_from_json, _entry_to_json,
+                                category_census)
+from microfreak.model import (Category, DeviceSnapshot,   # noqa: E402
+                              Preset, PresetRef, SlotRecord, TimingReport)
 from microfreak.session import Session                    # noqa: E402
 from microfreak.sync import diff                          # noqa: E402
 from microfreak.transports.simulated import (             # noqa: E402
     SimulatedMicroFreak, _synth_blob)
 
 OUT_DIR = REPO_ROOT / "ios/FreakCore/Tests/FreakCoreTests/Fixtures/vectors"
+# App-layer fixtures (the SwiftUI FreakLibrarian test target). The .mfprojz /
+# .mbp import parser (App/Sources/Support/MFProjzImport.swift) is app-layer, so
+# its golden lives with the app tests, not the FreakCore vectors.
+APP_FIXTURES = REPO_ROOT / "ios/App/Tests/Fixtures"
 
 HEX_NOTE = ("All byte sequences are uppercase two-digit hex, "
             "space-separated ('F0 00 20 6B ...').")
@@ -783,6 +802,370 @@ def gen_expendable() -> int:
         cases)
 
 
+# ------------------------------------------------------------ category.json
+
+def gen_category() -> int:
+    decode = []
+    for byte in range(0x00, 0x11):        # 13 mapped + three past-the-table bytes
+        cat = Category.from_device_byte(byte)
+        decode.append({"byte": byte, "slug": cat.slug})
+    # pin the two invariants: byte->slug table and the clamp
+    assert decode[0x03]["slug"] == "keys"          # slot-200 ground-truth byte
+    assert all(d["slug"] == "uncategorized" for d in decode[0x0D:])
+    slug_roundtrip = []
+    for cat in Category:
+        assert Category.from_slug(cat.slug) is cat
+        slug_roundtrip.append(cat.slug)
+    assert Category.from_slug("future_cat") is Category.UNCATEGORIZED
+    cases = [{
+        "name": "device_byte_decode",
+        "decode": decode,
+        "note": "index == the device category byte (meta[7] == long-0x52 "
+                "payload[10]); bytes 0x0D and up clamp to uncategorized",
+    }, {
+        "name": "slug_roundtrip",
+        "slugs": slug_roundtrip,
+        "unknown_slug": "future_cat",
+        "unknown_expected": "uncategorized",
+        "note": "from_slug(slug).slug == slug for all 13; an unknown slug "
+                "loads as uncategorized (forward compat), never a crash",
+    }]
+    return emit(
+        "category.json",
+        "Category device-byte decode table and slug round-trip. "
+        "from_device_byte(byte) maps 0x00..0x0C to the 13 Arturia slugs and "
+        "clamps every other byte to 'uncategorized'. Slugs are the stable "
+        "wire form used in the library index and collection files by both "
+        "cores. " + REGEN,
+        cases)
+
+
+# -------------------------------------------------------- library_attrs.json
+
+def _attr_entry(i: int, name: str, cat: Category, favorite: bool, tags) -> LibraryEntry:
+    return LibraryEntry(id=f"lib{i:02d}", name=name,
+                        sha256=p.digest(_synth_blob(7, f"attr{i}")),
+                        meta_hex="080000000000000033", slot=i,
+                        added_at="2026-09-01T00:00:00", tags=tuple(tags),
+                        category=cat, favorite=favorite)
+
+
+def gen_library_attrs() -> int:
+    cases = []
+
+    # round-trip: entry -> index JSON -> entry, category/favorite/tags carried
+    rt = [
+        _attr_entry(0, "Pad One", Category.PAD, True, ("ambient", "pad")),
+        _attr_entry(1, "Deep Bass", Category.BASS, False, ("sub",)),
+        _attr_entry(2, "Plain", Category.UNCATEGORIZED, False, ()),
+    ]
+    for e in rt:
+        d = _entry_to_json(e)
+        assert _entry_from_json(d) == e
+        cases.append({
+            "name": f"roundtrip_{e.id}",
+            "entry_json": d,
+            "expected": {"category": e.category.slug, "favorite": e.favorite,
+                         "tags": list(e.tags)},
+        })
+
+    # additive back-compat: an OLD index entry lacking category/favorite/tags
+    old_json = {"id": "old0", "name": "Legacy", "sha256": rt[0].sha256,
+                "meta_hex": "080000000000000033", "slot": 5,
+                "added_at": "2026-01-01T00:00:00"}     # NO tags/category/favorite
+    parsed = _entry_from_json(old_json)
+    assert parsed.category is Category.UNCATEGORIZED
+    assert parsed.favorite is False and parsed.tags == ()
+    cases.append({
+        "name": "old_index_defaults",
+        "entry_json": old_json,
+        "expected": {"category": "uncategorized", "favorite": False, "tags": []},
+        "note": "an index predating these keys loads with defaults "
+                "(category=uncategorized, favorite=false, tags=[])",
+    })
+
+    # category_census over a small entry set: every category key present
+    census_entries = [
+        _attr_entry(0, "a", Category.PAD, False, ()),
+        _attr_entry(1, "b", Category.PAD, False, ()),
+        _attr_entry(2, "c", Category.BASS, False, ()),
+        _attr_entry(3, "d", Category.UNCATEGORIZED, False, ()),
+    ]
+    census = category_census(census_entries)
+    census_slugs = {c.slug: n for c, n in census.items()}
+    assert census_slugs["pad"] == 2 and census_slugs["bass"] == 1
+    assert census_slugs["uncategorized"] == 1 and census_slugs["lead"] == 0
+    assert sum(census_slugs.values()) == len(census_entries)
+    cases.append({
+        "name": "category_census",
+        "entries": [{"category": e.category.slug} for e in census_entries],
+        "expected_census": census_slugs,
+        "note": "counts per category with every category key present (0 when "
+                "none), so the UI chip row is stable",
+    })
+    return emit(
+        "library_attrs.json",
+        "Additive library-index preset attributes: category (Category slug), "
+        "favorite (bool), tags ([str]). 'roundtrip' cases assert an entry "
+        "serializes and parses back identically; 'old_index_defaults' asserts "
+        "an entry dict missing the new keys parses with defaults (additive "
+        "back-compat, schema stays 1); 'category_census' pins the per-category "
+        "counts helper. " + REGEN,
+        cases)
+
+
+# --------------------------------------------------------- collections.json
+
+def _cref(seed: str, name: str) -> PresetRef:
+    return PresetRef(sha256=p.digest(_synth_blob(9, seed)), name=name,
+                     meta_hex="080000000000000033")
+
+
+def gen_collections() -> int:
+    cases = []
+
+    # collection JSON round-trip, one per provenance kind
+    refs = {0: _cref("c0", "Voltage Forms"),
+            128: _cref("c1", "Tokyo88 V3"),
+            384: _cref("c2", "High Bank")}
+    for kind in ProvenanceKind:
+        coll = PresetCollection(id=p.digest(kind.value.encode())[:32],
+                                name=f"Set {kind.value}",
+                                created_at="2026-09-01T14:32:00",
+                                provenance=Provenance(kind=kind,
+                                                      source="Ambient Peaks.mfprojz"),
+                                slots=dict(refs))
+        d = collection_to_json(coll)
+        assert collection_from_json(d) == coll
+        cases.append({
+            "name": f"roundtrip_{kind.value}",
+            "collection": d,
+            "expected_slots": [{"slot": s, "sha256": refs[s].sha256,
+                                "name": refs[s].name,
+                                "meta_hex": refs[s].meta_hex}
+                               for s in sorted(refs)],
+            "expected_provenance": {"kind": kind.value,
+                                    "source": "Ambient Peaks.mfprojz"},
+        })
+
+    # plan_apply decision table over a synthetic full hashed snapshot (6 slots)
+    sha = {k: p.digest(_synth_blob(9, k)) for k in
+           ("keep", "old", "new", "alpha", "gone", "init", "untouched")}
+
+    def rec(slot, name, key):
+        return SlotRecord(slot=slot, name=name, sha256=sha[key],
+                          meta=None, blob=None)
+
+    records = [rec(0, "Keep", "keep"), rec(1, "Old", "old"),
+               rec(2, "Alpha", "alpha"), rec(3, "Gone", "gone"),
+               rec(4, "Init", "init"), rec(5, "Untouched", "untouched")]
+    snap = DeviceSnapshot(taken_at="2026-09-01T00:00:00",
+                          records=tuple(records),
+                          timing=TimingReport(0.0, 0.0, None, None))
+    # collection covers 0 (unchanged), 1 (sha differs), 2 (name-only differs)
+    coll = PresetCollection.new(
+        "Plan", Provenance(ProvenanceKind.MANUAL),
+        {0: PresetRef(sha["keep"], "Keep", "080000000000000033"),
+         1: PresetRef(sha["new"], "New", "080000000000000033"),
+         2: PresetRef(sha["alpha"], "Beta", "080000000000000033")})
+    clear_with = PresetRef(sha["init"], "Init", "080000000000000033")
+
+    def snap_json():
+        return [{"slot": r.slot, "name": r.name, "sha256": r.sha256}
+                for r in records]
+
+    def coll_slots_json(c):
+        return {str(s): {"sha256": c.slots[s].sha256, "name": c.slots[s].name,
+                         "meta_hex": c.slots[s].meta_hex}
+                for s in sorted(c.slots)}
+
+    def plan_case(name, options, expected):
+        plan = plan_apply(coll, snap, options=options)
+        got = {sp.slot: sp.action.value for sp in plan.slots}
+        assert got == expected, (name, got, expected)
+        c = {"name": name,
+             "snapshot": snap_json(),
+             "collection_slots": coll_slots_json(coll),
+             "options": {"unlisted": options.unlisted,
+                         "clear_with": (None if options.clear_with is None else
+                                        {"sha256": options.clear_with.sha256,
+                                         "name": options.clear_with.name,
+                                         "meta_hex": options.clear_with.meta_hex}),
+                         "seconds_per_write": options.seconds_per_write},
+             "expected": [{"slot": sp.slot, "action": sp.action.value}
+                          for sp in plan.slots],
+             "write_count": plan.write_count,
+             "clear_count": plan.clear_count,
+             "skip_count": plan.skip_count,
+             "total_slots": plan.total_slots,
+             "estimated_seconds": plan.estimated_seconds}
+        return c
+
+    cases.append(plan_case(
+        "clear_policy",
+        ApplyOptions(unlisted="clear", clear_with=clear_with),
+        {0: "skip", 1: "write", 2: "write", 3: "clear", 4: "skip", 5: "clear"}))
+    cases.append(plan_case(
+        "leave_policy",
+        ApplyOptions(unlisted="leave"),
+        {0: "skip", 1: "write", 2: "write", 3: "skip", 4: "skip", 5: "skip"}))
+    # pin the headline counts
+    assert cases[-2]["write_count"] == 2 and cases[-2]["clear_count"] == 2
+    assert cases[-2]["estimated_seconds"] == 4.0
+    assert cases[-1]["write_count"] == 2 and cases[-1]["skip_count"] == 4
+    assert cases[-1]["estimated_seconds"] == 2.0
+
+    # error: a hash-less / partial snapshot is undecidable
+    partial = DeviceSnapshot(
+        taken_at="2026-09-01T00:00:00",
+        records=(SlotRecord(0, "Keep", sha["keep"], None, None),
+                 SlotRecord(1, "Old", None, None, None)),
+        timing=TimingReport(0.0, 0.0, None, None))
+    try:
+        plan_apply(coll, partial)
+        raise AssertionError("hash-less/partial snapshot must be refused")
+    except ValueError:
+        pass
+    cases.append({
+        "name": "refuses_partial_snapshot",
+        "snapshot": [{"slot": 0, "name": "Keep", "sha256": sha["keep"]},
+                     {"slot": 1, "name": "Old", "sha256": None}],
+        "collection_slots": coll_slots_json(coll),
+        "expect_error": "ValueError",
+        "note": "plan_apply requires a FULL hashed snapshot (every slot "
+                "0..N-1 present, has_hashes) — refusing beats guessing",
+    })
+    return emit(
+        "collections.json",
+        "PresetCollection JSON round-trip (one case per provenance.kind; "
+        "slots keyed by decimal-string slot, refs are {sha256,name,meta_hex}) "
+        "and the pure plan_apply decision table. Actions: WRITE='write' "
+        "(content OR name differs), SKIP_UNCHANGED='skip' (sha AND name "
+        "equal), CLEAR='clear' (unlisted slot overwritten with clear_with). "
+        "estimated_seconds == round((write+clear) * seconds_per_write, 1). "
+        "shas are real sha256 hex of seeded blobs but only string equality "
+        "matters, following the sync_diff convention. " + REGEN,
+        cases)
+
+
+# ---------------------------------------------------------- bank_import.json
+#
+# Golden fixture for the SWIFT .mfprojz/.mbp reader (MFProjzImport.swift), a
+# port of the VERIFIED tools/mbp_import.py. The expected values here are
+# produced BY that verified parser, so the Swift port is checked against the
+# reference — the Boost text tokenizer, latin-1 decode, hex-meta decode, the
+# sub-bank slot map, AND the hand-rolled Zip/DEFLATE reader (a real DEFLATE
+# member and a STORED member). Emitted to the app test target, not OUT_DIR.
+
+def _bank_blob(seed: int) -> bytes:
+    """A deterministic 4672-byte MCC byte array (full 0..255 range — the .mbp
+    blob is not 7-bit limited, unlike a wire payload)."""
+    out = bytearray(p.BLOB_SIZE)
+    x = (seed * 2654435761 + 1) & 0xFFFFFFFF
+    for i in range(p.BLOB_SIZE):
+        x = (x * 1103515245 + 12345) & 0xFFFFFFFF
+        out[i] = (x >> 16) & 0xFF
+    return bytes(out)
+
+
+def _mbp_text(name: str, blob, meta_hex: str) -> str:
+    """A MicroFreak Boost archive parseable by tools/mbp_import (same shape as
+    tests/test_core_collections.py's helper). blob=None -> a short archive
+    (name only), which the parser reports as an empty slot."""
+    head = f"serialization::archive 17 0 0 0 0 {len(name)} {name}"
+    if blob is None:
+        return head + " 0 0 0"
+    return (head + f" 0 0 0 {len(meta_hex)} {meta_hex} 0 0 1 {p.BLOB_SIZE} "
+            + " ".join(str(b) for b in blob))
+
+
+def _expected(pr: "mbp_import.MbpPreset") -> dict:
+    return {
+        "slot": pr.slot,
+        "name": pr.name,
+        "meta_hex": pr.meta.hex(),
+        "blob_sha256": (None if pr.blob is None
+                        else hashlib.sha256(pr.blob).hexdigest()),
+        "is_empty": pr.is_empty,
+    }
+
+
+def gen_bank_import() -> int:
+    APP_FIXTURES.mkdir(parents=True, exist_ok=True)
+    b0, b1, b2 = _bank_blob(1), _bank_blob(2), _bank_blob(3)
+    meta0 = "080000000005000311"          # 9 bytes, non-zero (exercises decode)
+    meta1 = "00" * 9                       # all-zero (a realistic pack export)
+
+    # --- standalone .mbp: "07-Voltage Forms-A7.mbp" -> slot 6 ---------------
+    mbp_name = "07-Voltage Forms-A7.mbp"
+    mbp_bytes = _mbp_text("Voltage Forms", b0, meta0).encode("latin-1")
+    # Parse through the verified parser with the real source filename (the
+    # slot derives from it); read_mbp would use the temp file's random name.
+    mbp_expected = _expected(mbp_import.parse_mbp_text(
+        mbp_bytes.decode("latin-1"), order=1, source=mbp_name))
+    assert mbp_expected["slot"] == 6 and mbp_expected["name"] == "Voltage Forms"
+    assert mbp_expected["blob_sha256"] == hashlib.sha256(b0).hexdigest()
+
+    # --- .mfprojz: a DEFLATE member, a STORED member, an empty slot, and a
+    #     non-.mbp file (which must be ignored). Members come back sorted by
+    #     name, exactly as the Swift Zip reader returns them. -----------------
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("07-Voltage Forms-A7.mbp", _mbp_text("Voltage Forms", b0, meta0))
+        z.writestr("259-Tokyo88 V3-C4.mbp", _mbp_text("Tokyo88 V3", b1, meta1),
+                   compress_type=zipfile.ZIP_STORED)        # STORED path
+        z.writestr("04-Twin Peaks-A4.mbp", _mbp_text("Twin Peaks", b2, meta0))
+        z.writestr("40-Init-B1.mbp", _mbp_text("Init", None, ""))   # empty slot
+        z.writestr("manifest.txt", "not a preset; must be ignored")
+    projz_bytes = buf.getvalue()
+    with tempfile.NamedTemporaryFile(suffix=".mfprojz", delete=False) as f:
+        f.write(projz_bytes)
+        projz_path = Path(f.name)
+    try:
+        parsed = mbp_import.read_mfprojz(projz_path)
+    finally:
+        os.unlink(projz_path)
+    projz_expected = [_expected(pr) for pr in parsed]
+    # sorted filename order: "04-…" < "07-…" < "259-…" < "40-…"
+    assert [e["name"] for e in projz_expected] == [
+        "Twin Peaks", "Voltage Forms", "Tokyo88 V3", "Init"]
+    # slot is the GLOBAL 1-based filename prefix minus one (see mbp_import):
+    # "04-…"->3, "07-…"->6, "259-…"->258, "40-…"->39
+    assert [e["slot"] for e in projz_expected] == [3, 6, 258, 39]
+    assert projz_expected[-1]["is_empty"] and projz_expected[-1]["blob_sha256"] is None
+    assert projz_expected[1]["meta_hex"] == meta0
+    assert projz_expected[2]["meta_hex"] == meta1
+
+    doc = {
+        "description":
+            "Golden fixture for the Swift .mfprojz/.mbp reader "
+            "(App/Sources/Support/MFProjzImport.swift), a port of the verified "
+            "tools/mbp_import.py. 'mbp' is one standalone Boost archive; "
+            "'mfprojz' is a Zip of .mbp members (one DEFLATE, one STORED, one "
+            "empty/short archive, plus a non-.mbp file to be ignored), members "
+            "in sorted-filename order. 'bytes_b64' is the exact file bytes fed "
+            "to MFProjzImport.parse; 'expected' is what the VERIFIED Python "
+            "parser yields — slot (the global 1-based filename prefix minus "
+            "one), name, meta_hex "
+            "(lowercase), blob_sha256 (lowercase sha256 of the 4672-byte blob, "
+            "null for an empty slot), is_empty. Regenerate: python3 "
+            "tools/gen_vectors.py (from the repo root).",
+        "mbp": {
+            "filename": mbp_name,
+            "bytes_b64": base64.b64encode(mbp_bytes).decode("ascii"),
+            "expected": mbp_expected,
+        },
+        "mfprojz": {
+            "filename": "Ambient Peaks.mfprojz",
+            "bytes_b64": base64.b64encode(projz_bytes).decode("ascii"),
+            "expected": projz_expected,
+        },
+    }
+    path = APP_FIXTURES / "bank_import.json"
+    path.write_text(json.dumps(doc, indent=2) + "\n")
+    return 1 + len(projz_expected)
+
+
 # ------------------------------------------------------------- verification
 
 def verify() -> list:
@@ -830,8 +1213,14 @@ def main() -> None:
     gen_reply_lag()
     gen_sync_diff()
     gen_expendable()
+    gen_category()
+    gen_library_attrs()
+    gen_collections()
+    bank_cases = gen_bank_import()
     for line in verify():
         print("OK  " + line)
+    print(f"OK  bank_import.json: {bank_cases} parsed items "
+          f"-> {APP_FIXTURES.relative_to(REPO_ROOT)}")
     print(f"vectors written to {OUT_DIR.relative_to(REPO_ROOT)}")
 
 

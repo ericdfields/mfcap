@@ -46,17 +46,24 @@ struct LibraryEntryDetailView: View {
                     }
                     .font(.title2)
                 } else {
-                    Button {
-                        renaming = true
-                    } label: {
-                        HStack {
-                            Text(entry.name).font(.title2.weight(.semibold))
-                            Image(systemName: "pencil")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                    HStack {
+                        Button {
+                            renaming = true
+                        } label: {
+                            HStack {
+                                Text(entry.name).font(.title2.weight(.semibold))
+                                Image(systemName: "pencil")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        Spacer()
+                        FavoriteToggle(isFavorite: entry.favorite) {
+                            Task { await model.libraryModel
+                                .toggleFavorite(id: entry.id) }
                         }
                     }
-                    .buttonStyle(.plain)
                 }
                 if let corrupt = model.libraryModel.corruptEntries[entry.id] {
                     Label("Blob file damaged: \(corrupt)",
@@ -83,12 +90,19 @@ struct LibraryEntryDetailView: View {
                     Text(Format.parseCoreTimestamp(entry.addedAt)
                         .map { Format.relativeAge($0) } ?? entry.addedAt)
                 }
-                if !entry.tags.isEmpty {
-                    LabeledContent("Tags") {
-                        HStack(spacing: 4) {
-                            ForEach(entry.tags, id: \.self) { TagChip(tag: $0) }
-                        }
-                    }
+                // Editable category — where a wrong device-byte auto-fill is
+                // corrected (UX addendum §22.3).
+                CategoryPickerRow(category: entry.category) { newCategory in
+                    Task { await model.libraryModel
+                        .setCategory(id: entry.id, newCategory) }
+                }
+            }
+
+            Section("Tags") {
+                TagEditor(tags: entry.tags) { tag in
+                    Task { await model.libraryModel.addTag(id: entry.id, tag) }
+                } remove: { tag in
+                    Task { await model.libraryModel.removeTag(id: entry.id, tag) }
                 }
             }
 

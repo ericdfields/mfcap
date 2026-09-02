@@ -31,9 +31,12 @@ from typing import Iterator, List, Optional
 BLOB_SIZE = 4672
 _HEADER = re.compile(
     r'serialization::archive\s+\d+\s+\d+\s+\d+\s+\d+\s+\d+\s+(\d+)\s')
-# filename like "07-Voltage Forms-A7.mbp" or "132-Tokyo88 V3-C4.mbp"
-_FNAME = re.compile(r'^(\d+)-.*?-([A-E])(\d+)\.mbp$', re.IGNORECASE)
-_BANK_OFFSET = {"A": 0, "B": 128, "C": 256, "D": 384, "E": 384}  # E rare; clamp
+# MCC names every preset file "<slot>-<project>-<subbank><slot>.mbp", where the
+# leading number is the GLOBAL 1-based slot (1..512) across the whole project —
+# e.g. "319-10042023 16h06-A319.mbp" is slot 319. The trailing sub-bank letter
+# is display only; earlier code that read it as a 128-slot bank offset wrongly
+# rejected any index > 128 (dropping most of a full-device dump).
+_FNAME_PREFIX = re.compile(r'^(\d+)-')
 
 
 @dataclass(frozen=True)
@@ -51,14 +54,11 @@ class MbpPreset:
 
 
 def _slot_from_name(fname: str) -> Optional[int]:
-    m = _FNAME.match(Path(fname).name)
+    m = _FNAME_PREFIX.match(Path(fname).name)
     if not m:
         return None
-    bank, idx = m.group(2).upper(), int(m.group(3))
-    base = _BANK_OFFSET.get(bank)
-    if base is None or not (1 <= idx <= 128):
-        return None
-    return base + idx - 1
+    n = int(m.group(1))
+    return n - 1 if 1 <= n <= 512 else None
 
 
 def parse_mbp_text(txt: str, order: int = 0, source: str = "") -> MbpPreset:

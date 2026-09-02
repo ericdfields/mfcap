@@ -156,6 +156,12 @@ class EntryNotFoundError(LibraryError):
         self.entry_id = entry_id
 
 
+class CollectionNotFoundError(LibraryError):
+    def __init__(self, collection_id: str):
+        super().__init__(f"no collection {collection_id}")
+        self.collection_id = collection_id
+
+
 class LibraryCorruptError(LibraryError):
     def __init__(self, path: str, detail: str):
         super().__init__(f"{path}: {detail}")

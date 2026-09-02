@@ -8,21 +8,25 @@ from __future__ import annotations
 
 __version__ = "0.1.0"
 
-from . import analysis, protocol, sync                       # noqa: F401
+from . import analysis, collections, protocol, sync          # noqa: F401
 from .backup import BackupSet                                # noqa: F401
+from .collections import (ApplyOptions, ApplyPlan, BankItem,  # noqa: F401
+                          PlanAction, PresetCollection, Provenance,
+                          ProvenanceKind, SlotPlan, plan_apply)
 from .device import MicroFreak                               # noqa: F401
 from .errors import (BlobSizeError, ChunkNotAckedError,      # noqa: F401
-                     DeviceNotFoundError, DeviceTimeoutError,
-                     EntryNotFoundError, IntegrityError, InvalidNameError,
-                     LibraryCorruptError, LibraryError, MicroFreakError,
-                     OperationCancelledError, ProtocolError,
+                     CollectionNotFoundError, DeviceNotFoundError,
+                     DeviceTimeoutError, EntryNotFoundError, IntegrityError,
+                     InvalidNameError, LibraryCorruptError, LibraryError,
+                     MicroFreakError, OperationCancelledError, ProtocolError,
                      ReplyMismatchError, SlotOutOfRangeError,
                      TransportError, TransportUnavailableError,
                      VerifyMismatchError, WriteAbortedError, WriteError)
-from .library import Library, LibraryEntry                   # noqa: F401
-from .model import (CancelToken, DeviceSnapshot, Preset,     # noqa: F401
-                    ProgressEvent, ProgressFn, SlotRecord, TimingReport,
-                    WriteReport)
+from .library import (Library, LibraryEntry, all_tags,       # noqa: F401
+                      category_census)
+from .model import (CancelToken, Category, DeviceSnapshot,   # noqa: F401
+                    Preset, PresetRef, ProgressEvent, ProgressFn, SlotRecord,
+                    TimingReport, WriteReport)
 from .protocol import (BLOB_SIZE, CHUNK_COUNT, CHUNK_SIZE,   # noqa: F401
                        DUPLICATE_THRESHOLD, META_LEN, NAME_LEN, SLOTS,
                        SLOTS_PER_BANK, NameInfo)

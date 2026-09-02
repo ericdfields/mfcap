@@ -11,11 +11,13 @@ from pathlib import Path
 from typing import Callable, List, Optional, Sequence, Union
 
 from .backup import BackupSet, atomic_write_text
+from .collections import ApplyPlan
 from .errors import (DeviceTimeoutError, MicroFreakError,
                      OperationCancelledError, ReplyMismatchError,
                      VerifyMismatchError)
-from .model import (CancelToken, DeviceSnapshot, Preset, ProgressEvent,
-                    ProgressFn, SlotRecord, TimingReport, WriteReport)
+from .model import (CancelToken, DeviceSnapshot, Preset, PresetRef,
+                    ProgressEvent, ProgressFn, SlotRecord, TimingReport,
+                    WriteReport)
 from .protocol import SLOTS, digest, validate_name
 from .session import Session
 from .transport import Transport
@@ -157,6 +159,44 @@ class MicroFreak:
             verified = True
         return WriteReport(slot=slot, sha256="", name=name, verified=verified,
                            duration_seconds=self.clock() - t0)
+
+    # -------------------------------------------------- apply / switch a collection
+
+    def apply_collection(self, plan: ApplyPlan,
+                         resolve: Callable[[PresetRef], Preset], *,
+                         verify: bool = True,
+                         progress: Optional[ProgressFn] = None,
+                         cancel: Optional[CancelToken] = None) -> List[WriteReport]:
+        """Write only plan.changes() (WRITE + CLEAR), ascending — SKIP_UNCHANGED
+        slots are never written. Per changed slot: poll cancel ->
+        OperationCancelledError(done, total); preset = resolve(p.incoming);
+        self.write(p.slot, preset, verify). Stops at the first raised error;
+        reports for completed slots are attached as .completed on any
+        MicroFreakError. Progress total = len(plan.changes())."""
+        changes = plan.changes()
+        total = len(changes)
+        reports: List[WriteReport] = []
+        durations: List[float] = []
+        t_start = self.clock()
+        for done, sp in enumerate(changes):
+            try:
+                if cancel is not None and cancel.cancelled:
+                    raise OperationCancelledError(done, total)
+                preset = resolve(sp.incoming)
+                t0 = self.clock()
+                rep = self.write(sp.slot, preset, verify=verify, cancel=cancel)
+                durations.append(self.clock() - t0)
+            except MicroFreakError as e:
+                e.completed = reports        # type: ignore[attr-defined]
+                raise
+            reports.append(rep)
+            if progress is not None:
+                elapsed = self.clock() - t_start
+                med = sorted(durations)[len(durations) // 2]
+                progress(ProgressEvent(done=done + 1, total=total, slot=sp.slot,
+                                       name=rep.name, elapsed_seconds=elapsed,
+                                       eta_seconds=med * (total - done - 1)))
+        return reports
 
     # ------------------------------------------------------ backup / restore
 

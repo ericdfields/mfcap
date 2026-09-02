@@ -1,0 +1,100 @@
+{
+  "description": "Category device-byte decode table and slug round-trip. from_device_byte(byte) maps 0x00..0x0C to the 13 Arturia slugs and clamps every other byte to 'uncategorized'. Slugs are the stable wire form used in the library index and collection files by both cores. Regenerate: python3 tools/gen_vectors.py (from the repo root).",
+  "cases": [
+    {
+      "name": "device_byte_decode",
+      "decode": [
+        {
+          "byte": 0,
+          "slug": "uncategorized"
+        },
+        {
+          "byte": 1,
+          "slug": "bass"
+        },
+        {
+          "byte": 2,
+          "slug": "brass"
+        },
+        {
+          "byte": 3,
+          "slug": "keys"
+        },
+        {
+          "byte": 4,
+          "slug": "lead"
+        },
+        {
+          "byte": 5,
+          "slug": "organ"
+        },
+        {
+          "byte": 6,
+          "slug": "pad"
+        },
+        {
+          "byte": 7,
+          "slug": "percussion"
+        },
+        {
+          "byte": 8,
+          "slug": "sequence"
+        },
+        {
+          "byte": 9,
+          "slug": "sfx"
+        },
+        {
+          "byte": 10,
+          "slug": "strings"
+        },
+        {
+          "byte": 11,
+          "slug": "template"
+        },
+        {
+          "byte": 12,
+          "slug": "vocoder"
+        },
+        {
+          "byte": 13,
+          "slug": "uncategorized"
+        },
+        {
+          "byte": 14,
+          "slug": "uncategorized"
+        },
+        {
+          "byte": 15,
+          "slug": "uncategorized"
+        },
+        {
+          "byte": 16,
+          "slug": "uncategorized"
+        }
+      ],
+      "note": "index == the device category byte (meta[7] == long-0x52 payload[10]); bytes 0x0D and up clamp to uncategorized"
+    },
+    {
+      "name": "slug_roundtrip",
+      "slugs": [
+        "uncategorized",
+        "bass",
+        "brass",
+        "keys",
+        "lead",
+        "organ",
+        "pad",
+        "percussion",
+        "sequence",
+        "sfx",
+        "strings",
+        "template",
+        "vocoder"
+      ],
+      "unknown_slug": "future_cat",
+      "unknown_expected": "uncategorized",
+      "note": "from_slug(slug).slug == slug for all 13; an unknown slug loads as uncategorized (forward compat), never a crash"
+    }
+  ]
+}

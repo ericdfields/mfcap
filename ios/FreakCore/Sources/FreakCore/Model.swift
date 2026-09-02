@@ -8,6 +8,48 @@
 
 import Foundation
 
+/// Arturia MicroFreak preset category — the librarian's editable attribute.
+/// The raw value IS the stable wire slug used verbatim in the library index
+/// and collection files by BOTH cores (Python `Category`). Do NOT add
+/// categories beyond this documented Arturia set.
+///
+/// `allCases` order is the device-byte order (see `deviceByteTable`); the UI
+/// orders its own chips over `allCases`.
+public enum Category: String, Sendable, CaseIterable, Codable, Equatable {
+    case uncategorized, bass, brass, keys, lead, organ, pad, percussion,
+         sequence, sfx, strings, template, vocoder
+
+    /// THE one device-byte -> Category table. Index == the device category
+    /// byte (meta[7] == long-0x52 payload[10]). HARDWARE-CONFIRMABLE: this
+    /// index map is NOT proven against ground truth (only slot-200's 0x03 is
+    /// observed). Confirm against a device, then correct here in ONE place;
+    /// category is user-editable so a wrong auto-fill is always fixable.
+    public static let deviceByteTable: [Category] = [
+        .uncategorized, .bass, .brass, .keys, .lead, .organ, .pad,
+        .percussion, .sequence, .sfx, .strings, .template, .vocoder,
+    ]
+
+    /// Decode meta[7]. Bytes outside the table -> .uncategorized.
+    public static func fromDeviceByte(_ byte: UInt8) -> Category {
+        let i = Int(byte)
+        return i < deviceByteTable.count ? deviceByteTable[i] : .uncategorized
+    }
+
+    /// Parse an index/file slug. Unknown slug -> .uncategorized (forward
+    /// compatibility: a future core's category loads as uncategorized here,
+    /// never a crash).
+    public static func fromSlug(_ slug: String) -> Category {
+        Category(rawValue: slug) ?? .uncategorized
+    }
+
+    public var slug: String { rawValue }
+
+    public var displayName: String {
+        self == .sfx ? "SFX"
+            : rawValue.prefix(1).uppercased() + rawValue.dropFirst()
+    }
+}
+
 /// Decoded long-0x52 payload.
 public struct NameInfo: Sendable, Equatable {
     public let slot: Int          // from payload[0..1] — the reply-lag matching key
@@ -69,6 +111,30 @@ public struct Preset: Sendable, Equatable {
     /// Copy with a new (validated) name. Same blob, same meta, same sha256.
     public func renamed(_ name: String) throws -> Preset {
         try Preset(name: name, blob: blob, meta: meta)
+    }
+}
+
+/// A slot occupant inside a PresetCollection: content (sha256) + the name and
+/// meta needed to write it faithfully. Content-keyed (not entry-id-keyed), so
+/// it survives entry rename/delete and captures the exact name+meta of the
+/// arrangement. Resolvable to a Preset given the blob (Library.presetForRef).
+public struct PresetRef: Sendable, Equatable {
+    public let sha256: String     // 64 lowercase hex; addresses blobs/<sha256>.bin
+    public let name: String       // validated printable ASCII (<= 23), as written
+    public let metaHex: String    // 18 lowercase hex chars (9 bytes), verbatim
+
+    public init(sha256: String, name: String, metaHex: String) {
+        self.sha256 = sha256
+        self.name = name
+        self.metaHex = metaHex
+    }
+
+    /// Resolve to a Preset given the blob bytes. Throws Preset's validations.
+    public func toPreset(blob: Data) throws -> Preset {
+        guard let meta = Data(hexString: metaHex) else {
+            throw FreakError.protocolViolation(detail: "unparseable meta_hex: \(metaHex)")
+        }
+        return try Preset(name: name, blob: blob, meta: meta)
     }
 }
 

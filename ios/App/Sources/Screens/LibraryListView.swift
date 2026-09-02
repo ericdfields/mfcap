@@ -17,6 +17,11 @@ struct LibraryListView: View {
     @State private var showImportDevice = false
     @State private var deleteCandidate: LibraryEntry?
     @State private var renamingEntry: String?
+    // Edit-mode multi-select for bulk attribute edits (UX addendum §22.4).
+    @State private var selecting = false
+    @State private var selectedIDs = Set<String>()
+    @State private var bulkTag = ""
+    @State private var showBulkTag = false
 
     var body: some View {
         @Bindable var libraryModel = model.libraryModel
@@ -38,7 +43,24 @@ struct LibraryListView: View {
             return true
         }
         .searchable(text: $libraryModel.searchText, prompt: "Name or tag")
+        .safeAreaInset(edge: .top, spacing: 0) { facetHeader }
         .toolbar { toolbarContent }
+        .alert("Add a tag to \(selectedIDs.count) presets",
+               isPresented: $showBulkTag) {
+            TextField("tag", text: $bulkTag)
+            Button("Add") {
+                let tag = bulkTag.trimmingCharacters(in: .whitespaces)
+                bulkTag = ""
+                guard !tag.isEmpty else { return }
+                let ids = Array(selectedIDs)
+                Task {
+                    for id in ids { await model.libraryModel.addTag(id: id, tag) }
+                    model.toasts.show("Tagged \(ids.count) presets '\(tag)'.")
+                }
+                endSelecting()
+            }
+            Button("Cancel", role: .cancel) {}
+        }
         .fileImporter(isPresented: $showImporter,
                       allowedContentTypes: [.mfPreset, .json, .data],
                       allowsMultipleSelection: true) { result in
@@ -69,10 +91,56 @@ struct LibraryListView: View {
         List {
             ForEach(model.libraryModel.filtered(tag: tag)) { entry in
                 LibraryRowView(entry: entry, renamingEntry: $renamingEntry,
-                               requestDelete: { deleteCandidate = $0 })
+                               requestDelete: { deleteCandidate = $0 },
+                               selecting: selecting,
+                               isSelected: selectedIDs.contains(entry.id),
+                               onToggleSelect: { toggleSelect(entry.id) })
             }
         }
         .listStyle(.plain)
+    }
+
+    // ------------------------------------------- faceted header (§22, §23.2)
+
+    @ViewBuilder
+    private var facetHeader: some View {
+        VStack(spacing: 0) {
+            CategoryFilterBar()
+            if !model.libraryModel.tagFilter.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(Array(model.libraryModel.tagFilter).sorted(),
+                                id: \.self) { tag in
+                            Button {
+                                model.libraryModel.tagFilter.remove(tag)
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Text("#\(tag)").font(.caption2)
+                                    Image(systemName: "xmark.circle.fill")
+                                        .font(.caption2)
+                                }
+                                .padding(.horizontal, 6).padding(.vertical, 2)
+                                .background(Color.accentColor.opacity(0.12),
+                                            in: Capsule())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, 16).padding(.vertical, 6)
+                }
+                .background(.thinMaterial)
+            }
+        }
+    }
+
+    private func toggleSelect(_ id: String) {
+        if selectedIDs.contains(id) { selectedIDs.remove(id) }
+        else { selectedIDs.insert(id) }
+    }
+
+    private func endSelecting() {
+        selecting = false
+        selectedIDs.removeAll()
     }
 
     // -------------------------------------------------------------- states
@@ -118,24 +186,89 @@ struct LibraryListView: View {
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         ToolbarItemGroup(placement: .primaryAction) {
-            Menu {
-                Picker("Sort", selection: Binding(
-                    get: { model.libraryModel.sort },
-                    set: { model.libraryModel.sort = $0 })) {
-                    ForEach(LibraryModel.Sort.allCases) { sort in
-                        Text(sort.title).tag(sort)
+            if selecting {
+                Menu {
+                    Menu("Set Category…") {
+                        ForEach(FreakCore.Category.displayOrder, id: \.self) { category in
+                            Button(category.displayName) {
+                                bulkSetCategory(category)
+                            }
+                        }
                     }
+                    Button("Add Tag…") { showBulkTag = true }
+                    Button("Favorite") { bulkSetFavorite(true) }
+                    Button("Unfavorite") { bulkSetFavorite(false) }
+                } label: {
+                    Label("\(selectedIDs.count) selected",
+                          systemImage: "checklist")
                 }
-            } label: {
-                Label("Sort", systemImage: "arrow.up.arrow.down")
-            }
-            Menu {
-                Button("Import File…") { showImporter = true }
-                Button("Import Device…") { showImportDevice = true }
-            } label: {
-                Label("Import", systemImage: "square.and.arrow.down")
+                .disabled(selectedIDs.isEmpty)
+                Button("Done") { endSelecting() }
+            } else {
+                Menu {
+                    Picker("Sort", selection: Binding(
+                        get: { model.libraryModel.sort },
+                        set: { model.libraryModel.sort = $0 })) {
+                        ForEach(LibraryModel.Sort.allCases) { sort in
+                            Text(sort.title).tag(sort)
+                        }
+                    }
+                } label: {
+                    Label("Sort", systemImage: "arrow.up.arrow.down")
+                }
+                if !model.libraryModel.tags.isEmpty {
+                    Menu {
+                        ForEach(model.libraryModel.tags, id: \.self) { tag in
+                            Button {
+                                toggleTagFacet(tag)
+                            } label: {
+                                if model.libraryModel.tagFilter.contains(tag) {
+                                    Label(tag, systemImage: "checkmark")
+                                } else {
+                                    Text(tag)
+                                }
+                            }
+                        }
+                    } label: { Label("Tags", systemImage: "tag") }
+                }
+                Button {
+                    selecting = true
+                } label: { Label("Select", systemImage: "checkmark.circle") }
+                Menu {
+                    Button("Import File…") { showImporter = true }
+                    Button("Import Device…") { showImportDevice = true }
+                } label: {
+                    Label("Import", systemImage: "square.and.arrow.down")
+                }
             }
         }
+    }
+
+    private func toggleTagFacet(_ tag: String) {
+        if model.libraryModel.tagFilter.contains(tag) {
+            model.libraryModel.tagFilter.remove(tag)
+        } else {
+            model.libraryModel.tagFilter.insert(tag)
+        }
+    }
+
+    private func bulkSetCategory(_ category: FreakCore.Category) {
+        let ids = Array(selectedIDs)
+        Task {
+            await model.libraryModel.setCategory(ids: ids, category)
+            model.toasts.show("Set \(ids.count) presets to \(category.displayName).")
+        }
+        endSelecting()
+    }
+
+    private func bulkSetFavorite(_ favorite: Bool) {
+        let ids = Array(selectedIDs)
+        Task {
+            for id in ids { await model.libraryModel.setFavorite(id: id, favorite) }
+            model.toasts.show((favorite ? "Favorited " : "Unfavorited ")
+                + "\(ids.count) presets.")
+        }
+        endSelecting()
     }
 
     // -------------------------------------------------------------- intents
@@ -204,14 +337,24 @@ struct LibraryRowView: View {
     let entry: LibraryEntry
     @Binding var renamingEntry: String?
     let requestDelete: (LibraryEntry) -> Void
+    /// Edit-mode multi-select (UX addendum §22.4); off by default so
+    /// FavoritesListView and others get the plain row.
+    var selecting = false
+    var isSelected = false
+    var onToggleSelect: (() -> Void)? = nil
 
     @State private var editingTags = false
-    @State private var tagsText = ""
     @State private var exporting = false
     @State private var exportDocument: MFPresetDocument?
 
     var body: some View {
         HStack(spacing: 10) {
+            if selecting {
+                Image(systemName: isSelected
+                      ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(isSelected ? Color.accentColor : .secondary)
+                    .accessibilityLabel(isSelected ? "selected" : "not selected")
+            }
             if renamingEntry == entry.id {
                 RenameField(original: entry.name) { newName in
                     renamingEntry = nil
@@ -225,14 +368,16 @@ struct LibraryRowView: View {
             } else {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(entry.name).font(.body)
-                    if !entry.tags.isEmpty {
-                        HStack(spacing: 4) {
-                            ForEach(entry.tags, id: \.self) { TagChip(tag: $0) }
-                        }
+                    HStack(spacing: 4) {
+                        CategoryBadge(category: entry.category)
+                        ForEach(entry.tags, id: \.self) { TagChip(tag: $0) }
                     }
                 }
             }
             Spacer()
+            FavoriteToggle(isFavorite: entry.favorite) {
+                Task { await model.libraryModel.toggleFavorite(id: entry.id) }
+            }
             if let detail = model.libraryModel.corruptEntries[entry.id] {
                 SlotFlagBadge(flag: .verifyFailed)
                     .help(detail)
@@ -252,22 +397,15 @@ struct LibraryRowView: View {
         }
         .frame(minHeight: 52)
         .contentShape(Rectangle())
-        .onTapGesture { model.detail = .libraryEntry(entry.id) }
+        .onTapGesture {
+            if selecting { onToggleSelect?() }
+            else { model.detail = .libraryEntry(entry.id) }
+        }
         .draggable(PresetTransfer(source: .library(entryID: entry.id),
                                   displayName: entry.name))
         .contextMenu { menuItems }
-        .alert("Tags for '\(entry.name)'", isPresented: $editingTags) {
-            TextField("comma, separated, tags", text: $tagsText)
-            Button("Save") {
-                let tags = tagsText.split(separator: ",")
-                    .map { $0.trimmingCharacters(in: .whitespaces) }
-                    .filter { !$0.isEmpty }
-                Task {
-                    _ = try? await model.libraryModel.setTags(id: entry.id,
-                                                              tags: tags)
-                }
-            }
-            Button("Cancel", role: .cancel) {}
+        .sheet(isPresented: $editingTags) {
+            TagEditorSheet(entry: entry)
         }
         .fileExporter(isPresented: $exporting,
                       document: exportDocument,
@@ -322,10 +460,24 @@ struct LibraryRowView: View {
             Label("Duplicate", systemImage: "plus.square.on.square")
         }
         Button {
-            tagsText = entry.tags.joined(separator: ", ")
             editingTags = true
         } label: {
             Label("Tags…", systemImage: "tag")
+        }
+        Menu {
+            ForEach(FreakCore.Category.displayOrder, id: \.self) { category in
+                Button {
+                    Task { await model.libraryModel.setCategory(id: entry.id, category) }
+                } label: {
+                    if entry.category == category {
+                        Label(category.displayName, systemImage: "checkmark")
+                    } else {
+                        Text(category.displayName)
+                    }
+                }
+            }
+        } label: {
+            Label("Category…", systemImage: "square.grid.2x2")
         }
         Button {
             Task { @MainActor in
@@ -343,6 +495,42 @@ struct LibraryRowView: View {
         } label: {
             Label("Delete", systemImage: "trash")
         }
+    }
+}
+
+// =============================================================== tag editor
+
+/// The add/remove tag sheet (UX addendum §23.1), reading the live entry so
+/// chips update as tags are edited. Replaces the base comma-string alert.
+struct TagEditorSheet: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+    let entry: LibraryEntry
+
+    private var current: LibraryEntry {
+        model.libraryModel.entry(id: entry.id) ?? entry
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Tags") {
+                    TagEditor(tags: current.tags) { tag in
+                        Task { await model.libraryModel.addTag(id: entry.id, tag) }
+                    } remove: { tag in
+                        Task { await model.libraryModel.removeTag(id: entry.id, tag) }
+                    }
+                }
+            }
+            .navigationTitle("Tags for \(entry.name)")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+        .presentationDetents([.medium])
     }
 }
 

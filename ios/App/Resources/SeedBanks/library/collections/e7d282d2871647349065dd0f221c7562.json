@@ -1,0 +1,172 @@
+{
+  "schema": 1,
+  "id": "e7d282d2871647349065dd0f221c7562",
+  "name": "Solid Perc",
+  "created_at": "2026-09-01T22:40:56",
+  "provenance": {
+    "kind": "imported_bank",
+    "source": "Solid Perc"
+  },
+  "slots": {
+    "0": {
+      "sha256": "839ffdca0cb24e75f3582df9c447caac52002c81297dff1f06edaf377122aa25",
+      "name": "Tribe Box",
+      "meta_hex": "000000000000000000"
+    },
+    "1": {
+      "sha256": "2f0c0699a41c37e54f7712d28f788747a8389b9ff6d83a839dad750778a334a8",
+      "name": "Velocity Snare",
+      "meta_hex": "000101000000010000"
+    },
+    "2": {
+      "sha256": "9edcae72d1cbf241132cc88ff05b6f6f3b285adea35122b62fd12ae6fae7aac1",
+      "name": "Frequency Hat",
+      "meta_hex": "000000000000000000"
+    },
+    "3": {
+      "sha256": "7c8ba45cc6ae6a591a3d0c357baf28aa44d82c7d21d30f6554c6ab8de030a852",
+      "name": "Crash Control",
+      "meta_hex": "000001100000010000"
+    },
+    "4": {
+      "sha256": "157232315ab6c5642c48458d5944d1ca9e47c26130f171a25dd43b48e57f0d19",
+      "name": "Tommer Tones",
+      "meta_hex": "000000000000000000"
+    },
+    "5": {
+      "sha256": "023755132adfe7ec16f76585a09b21832861f6a51ef0ac4cebed5d7585b0a04c",
+      "name": "Electric Claps",
+      "meta_hex": "000000000000000000"
+    },
+    "6": {
+      "sha256": "acdceafd0332bc89bd237e7c450d5cc1f289ca446114b0430ab7bd21d319c62c",
+      "name": "Rim Click",
+      "meta_hex": "000000000000000000"
+    },
+    "7": {
+      "sha256": "77db7fd8b7e25b6f5cbd0a8d622fa7ad806fce8f4f6406e72e243b25d75e325b",
+      "name": "Random Elixer",
+      "meta_hex": "000000000000000000"
+    },
+    "8": {
+      "sha256": "3e0c177340ba8b9024562b91b036bd034fb30ecd0742cff35270269a5010d89d",
+      "name": "Long and Fat",
+      "meta_hex": "000000000000000000"
+    },
+    "9": {
+      "sha256": "712630be87a2b50db8492c40411fc2da6f3d6f2f913f51e4ceb8133ed473789d",
+      "name": "Joker Blips",
+      "meta_hex": "000000000000000000"
+    },
+    "10": {
+      "sha256": "c54929e168b291b460f278c5e7f1c87007fdf440ae5a7fa37865b2b919ff2d28",
+      "name": "Thin Ice",
+      "meta_hex": "000000000000000000"
+    },
+    "11": {
+      "sha256": "fbb5dfcd8d158067461b12ec1c90573ef0911ef71ee763484373a1c7f4d36c24",
+      "name": "Solid Clave",
+      "meta_hex": "000000000000000000"
+    },
+    "99": {
+      "sha256": "62ce792b5263b9eb692c0f4f41f4d188def49294b76ee08f6e810a927fd1df92",
+      "name": "5th Block",
+      "meta_hex": "100100001000000000"
+    },
+    "100": {
+      "sha256": "ec81abeb1bbea547b1c7f049a00ae2829e79f995b49f8b2e5524a45fa7948e05",
+      "name": "Throw a Dice",
+      "meta_hex": "000000000000000000"
+    },
+    "101": {
+      "sha256": "49497d0d8e1ecd9cc5a04eb9ecb1fcb9469d6a0f47936912ff74bbe75520b72b",
+      "name": "Heavy Serums",
+      "meta_hex": "000000000000000000"
+    },
+    "102": {
+      "sha256": "55721cb2afb9e4db1af790c3f8ce4393776e61e65b9eee39da99fb95c4350a8b",
+      "name": "R4MF",
+      "meta_hex": "000000000000000000"
+    },
+    "103": {
+      "sha256": "cdf2224a8f89ee0b19275da352d20de245d3fd56d021c0178c9fb13b6b81f2bb",
+      "name": "Q Factors",
+      "meta_hex": "000000000000000000"
+    },
+    "104": {
+      "sha256": "dc760db1209871420b76420e97905b1ac62e2621769f8d87ff0631fb856d2825",
+      "name": "Bass And Kicks",
+      "meta_hex": "000000000000000000"
+    },
+    "105": {
+      "sha256": "fab84b70e00bcff4f2ca648618e3b89e904fe31d4929e2f21e2f2f3bf826403d",
+      "name": "Doctor Rattle",
+      "meta_hex": "000000000000000000"
+    },
+    "106": {
+      "sha256": "c5754b72dc65659dee6980b579010202cb237850c513657d1d6b0f703ae2e928",
+      "name": "Metallic Bells",
+      "meta_hex": "000000000000000000"
+    },
+    "107": {
+      "sha256": "5005bcfc31805ef2a9ecb009f5a2c680709b16bc959a524bc610af52c52291d4",
+      "name": "Electro Snare",
+      "meta_hex": "000000000000000000"
+    },
+    "108": {
+      "sha256": "781b195b74ee8ebc05d3a3dadc4a72b7abe38788ec0cd7e5b76ed9ad285e5959",
+      "name": "Low Rumbler",
+      "meta_hex": "000000000000000000"
+    },
+    "109": {
+      "sha256": "209055feab260c96fd965d3f507690a9509df84f8a193713a5e109e3d506889d",
+      "name": "Alien Shakers",
+      "meta_hex": "000000000000000000"
+    },
+    "110": {
+      "sha256": "d4cd59e758691f5105a48c2a1ff19d07ca1f08a332d7c590e26bca32c8a2408b",
+      "name": "Saw Some PPL",
+      "meta_hex": "000000000000000000"
+    },
+    "111": {
+      "sha256": "2936c0950519c06ca1d158b5836dc4bb805a8e9339253952cdc73d549539a5b8",
+      "name": "Obvious Omen",
+      "meta_hex": "000000000000000000"
+    },
+    "112": {
+      "sha256": "30a7a54c57aeda012f4282175599cf2658ee4208eb69261d0b9f54b91bc55819",
+      "name": "Fat Bips",
+      "meta_hex": "000000000000000000"
+    },
+    "113": {
+      "sha256": "93f438c7a12264f5b01223dfeaac460de5b82c3933dc1337f75339db1abe4953",
+      "name": "The Landing",
+      "meta_hex": "000000000000000000"
+    },
+    "114": {
+      "sha256": "669e1765155ac659f5d67d1a7cbd600584032e73927409e17efb1122cfba55a6",
+      "name": "Dr. Trash Hat",
+      "meta_hex": "000000000000000000"
+    },
+    "115": {
+      "sha256": "5b3123331c613f75cc27756bcde246ffc8de9d3c742ed96c633f48177e563b7d",
+      "name": "Modulation FMF",
+      "meta_hex": "000000000000000000"
+    },
+    "116": {
+      "sha256": "ce16d6d46ae9dbb5dab88f8154c2720c1a60e58d4b846ca119c9462870256850",
+      "name": "High Voltages",
+      "meta_hex": "000000000000000000"
+    },
+    "117": {
+      "sha256": "bf5ef13e88ccca419b9afe0767d63663ce3ba566cab5bed95b3610b0cfea14fc",
+      "name": "Warm Toms",
+      "meta_hex": "000000000000000000"
+    },
+    "118": {
+      "sha256": "cf29d88c270b881c54ee606baf142d50e97fc9b96202341e0ac0d679663b1519",
+      "name": "Tom Poems",
+      "meta_hex": "000000000000000000"
+    }
+  }
+}

@@ -1,0 +1,172 @@
+{
+  "schema": 1,
+  "id": "1b6c7af846cb44259f52a9ea0cc42e36",
+  "name": "Nhar Signature",
+  "created_at": "2026-09-01T22:40:55",
+  "provenance": {
+    "kind": "imported_bank",
+    "source": "Nhar Signature"
+  },
+  "slots": {
+    "0": {
+      "sha256": "c9d00a54865f9992f14ea5fe1630393d2f8a80d433329efa42d8bb07c041cc7e",
+      "name": "Cartography",
+      "meta_hex": "000000000000000000"
+    },
+    "1": {
+      "sha256": "cdd67703a48cb53c79bc0e0c035cb42652c40ddca873a4b07d439d20656e7f49",
+      "name": "Chants Du Vide",
+      "meta_hex": "000000000000000000"
+    },
+    "2": {
+      "sha256": "5351c78a5c0cfd98476eeb587aedf9db2deafb5f715e1ce498ad0e91ef78838b",
+      "name": "Cousteau",
+      "meta_hex": "000000000000000000"
+    },
+    "3": {
+      "sha256": "cf53959947a260cfcd6b995df49181e0f0fdd6556679a0d7de3ab5626748c41a",
+      "name": "Embroidery",
+      "meta_hex": "000000000000000000"
+    },
+    "4": {
+      "sha256": "cd14eb0768cf5e36c72360cac9870ac69fa5c36e1a5f592aebb3969ff99046aa",
+      "name": "Erhcet",
+      "meta_hex": "000000000000000000"
+    },
+    "5": {
+      "sha256": "d301bedbf2102110358123e3a8a992356f1d335f35a20a10f92f2cdf447fa9b8",
+      "name": "Kepler",
+      "meta_hex": "000000000000000000"
+    },
+    "6": {
+      "sha256": "a284be8577001d7e8594effcd5bb2dbf8d3fc1e7d13204e6c4e97956daef2c35",
+      "name": "Menestrel",
+      "meta_hex": "000000000000000000"
+    },
+    "7": {
+      "sha256": "f0b1652581e21905a5c77d47966d25c09d6eda87de456f337c30f01578e847f0",
+      "name": "Mnemosyne",
+      "meta_hex": "000000000000000000"
+    },
+    "8": {
+      "sha256": "0e6722f4172159f5929bc5a31e955af01f0fe6236a357cd61cc3d3b0a3ec8366",
+      "name": "Mocaccino",
+      "meta_hex": "000000000000000000"
+    },
+    "9": {
+      "sha256": "2e937ac9fa36facffd063d7af90c9b2f130dd1776df3a803c59f6f36872371c6",
+      "name": "Paradolia",
+      "meta_hex": "000000000000000000"
+    },
+    "10": {
+      "sha256": "d8929062a82414420c4576f3268ef529916bc3f14e60ef11eaeef8321b46289d",
+      "name": "Discount",
+      "meta_hex": "000000000000000000"
+    },
+    "11": {
+      "sha256": "8736efc8917c306f8e26fb01e853c4708248721af31955837e160c51939b1080",
+      "name": "Unimatrix",
+      "meta_hex": "000000000000000000"
+    },
+    "99": {
+      "sha256": "5f9eedd605a2b7837542b6b43f3a1fbaf998dad0d10740bc8e7189bfd89f9ee1",
+      "name": "Quadrant",
+      "meta_hex": "000000000000000000"
+    },
+    "100": {
+      "sha256": "1435ecf1752789495d6639f8e43f2b0d68e636e1f5035ff4a0c51c6a6a7488eb",
+      "name": "Sto-Vo-Kor",
+      "meta_hex": "000000000000000000"
+    },
+    "101": {
+      "sha256": "744edb711386807301ed110ff93c599c6229f76e7f3fd7d3229c03fe4e3633f7",
+      "name": "Ascension",
+      "meta_hex": "000000000000000000"
+    },
+    "102": {
+      "sha256": "93bfb3ad81954fdb79b6054098984f7c1e1479c9c957bd1a548467e8b900f6cb",
+      "name": "Intermezzo",
+      "meta_hex": "000000000000000000"
+    },
+    "103": {
+      "sha256": "cc7f70b2eaa9019e8f5e7afc4b6dd0e2ed56524c475b0ef1e3f50a75c741b1b7",
+      "name": "Jouret IV",
+      "meta_hex": "000000000000000000"
+    },
+    "104": {
+      "sha256": "2c97ac973764110ff86a5f84383b6c237e2bd185ea1a111260afea97d0ba474e",
+      "name": "Manta Ray",
+      "meta_hex": "000000000000000000"
+    },
+    "105": {
+      "sha256": "dd7f825ccde8902198bd120f1de3eb7cf3f92e571a5e54b72fa40ef932e848f8",
+      "name": "Montana",
+      "meta_hex": "000000000000000000"
+    },
+    "106": {
+      "sha256": "8a099546bd02cd124a65b0f0d2ac42153f817d9579762173c40828c8be222bd5",
+      "name": "Paesaggio",
+      "meta_hex": "000000000000000000"
+    },
+    "107": {
+      "sha256": "80579f3753394cc1792af2dcfabe9ddaf0181149d57b196786dbf8aa2f298383",
+      "name": "Preterite",
+      "meta_hex": "000000000000000000"
+    },
+    "108": {
+      "sha256": "4dbc58e59563a702e0da93eb80695d650c58a5b0b41955c603cdc705230d7d35",
+      "name": "Recorder",
+      "meta_hex": "000000000000000000"
+    },
+    "109": {
+      "sha256": "6a83f90d0a5efe6a30d7fbc6a1cb230a37c2651a2eb1e8520a90315147f65c6d",
+      "name": "Styrax",
+      "meta_hex": "000000000000000000"
+    },
+    "110": {
+      "sha256": "01843fd91c233fc6122e43be2e68678a87754db5f298af76f38f72f1e255ed3b",
+      "name": "Watermark",
+      "meta_hex": "000000000000000000"
+    },
+    "111": {
+      "sha256": "c0b29ca7abbe80b13819421ff11f532b2343c167f77a2bd46bee3c6771d1332b",
+      "name": "Casual",
+      "meta_hex": "000000000000000000"
+    },
+    "112": {
+      "sha256": "7ac5301be7b7b2c34578cb4a3341be8ff536096d050c8892a18b2d3beb25014a",
+      "name": "Cubism",
+      "meta_hex": "000000000000000000"
+    },
+    "113": {
+      "sha256": "e7413f9a031033d1c4253398a37140ff468fede9efcd9482568d0c81b5d6a017",
+      "name": "Funkotronic",
+      "meta_hex": "000000000000000000"
+    },
+    "114": {
+      "sha256": "6548c04acbfc1c8df5e7f3b0c24001e291538481c7c7e886d5ad46311d179612",
+      "name": "Hackney",
+      "meta_hex": "000000000000000000"
+    },
+    "115": {
+      "sha256": "dcb56ba00c54e07a9372b029cba249829512820aea1d367832a3fd7337eda9ff",
+      "name": "Haestrom",
+      "meta_hex": "000000000000000000"
+    },
+    "116": {
+      "sha256": "b8059e747d43c9ecadee6bde5bc1735b271138827f26e5abb7e3c028aea348a8",
+      "name": "Hyperion",
+      "meta_hex": "000000000000000000"
+    },
+    "117": {
+      "sha256": "97865bcef5153dede27f27ece127ca2c4d14cfa07cb20d75fb22351fbcbb6a8f",
+      "name": "Sovereign",
+      "meta_hex": "000000000000000000"
+    },
+    "118": {
+      "sha256": "430b46e161a0c317881170a68319c21956a48203ef74200a595685f617d82711",
+      "name": "Selfosc",
+      "meta_hex": "000000000000000000"
+    }
+  }
+}
